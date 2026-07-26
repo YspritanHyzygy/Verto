@@ -8,6 +8,7 @@
   <img alt="AI Coded 100%" src="https://img.shields.io/badge/AI%20Coded-100%25-brightgreen?style=flat-square&labelColor=444" />
   <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-0A84FF?style=flat-square&labelColor=444&logo=apple&logoColor=white" />
   <img alt="SwiftUI" src="https://img.shields.io/badge/Swift-SwiftUI-F05138?style=flat-square&labelColor=444&logo=swift&logoColor=white" />
+  <a href="../LICENSE"><img alt="License Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-D6A184?style=flat-square&labelColor=444" /></a>
 </p>
 
 <p align="center">
@@ -130,3 +131,7 @@ xcodebuild test \
 ```
 
 시뮬레이터는 selection이 실제로 바뀌었는지는 검증할 수 있지만 물리적 진동은 검증할 수 없다. 햅틱 강도와 감촉은 실제 iPhone에서 최종 확인이 필요하다.
+
+## 라이선스
+
+이 프로젝트는 [Apache License 2.0](../LICENSE)으로 배포된다.
