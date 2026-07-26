@@ -1,0 +1,21 @@
+译境 (Verto)
+Copyright 2026 Yspritan
+
+This product includes software developed by Yspritan.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file for the
+full license text.
+
+---
+
+Third-party notices
+
+This project has no bundled third-party source code or package dependencies.
+At runtime it talks to the following services and system frameworks, which are
+governed by their own terms and are not covered by this project's license:
+
+- Apple system frameworks (SwiftUI, UIKit, AVFoundation, PhotosUI, Speech,
+  Translation, NaturalLanguage, Observation), used under Apple's SDK and
+  platform terms.
+- Google Translate's public web endpoint (translate.googleapis.com), used
+  without an API key and subject to Google's terms of service.
