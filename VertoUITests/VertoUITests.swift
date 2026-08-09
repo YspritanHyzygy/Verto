@@ -90,6 +90,29 @@ final class VertoUITests: XCTestCase {
             .matching(NSPredicate(format: "label == %@", "载入翻译：\(dictatedSource)"))
             .firstMatch
         XCTAssertTrue(savedHistoryItem.waitForExistence(timeout: 3))
+
+        let historyFavoriteButtons = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history-favorite-"))
+        XCTAssertTrue(historyFavoriteButtons.firstMatch.waitForExistence(timeout: 2))
+        let favoriteButtonIdentifiers = (0..<historyFavoriteButtons.count).map {
+            historyFavoriteButtons.element(boundBy: $0).identifier
+        }
+        for identifier in favoriteButtonIdentifiers {
+            let removeFavoriteButton = element(identifier, in: app)
+            XCTAssertTrue(removeFavoriteButton.waitForExistence(timeout: 2))
+            removeFavoriteButton.tap()
+            XCTAssertTrue(waitUntilAbsent(removeFavoriteButton))
+        }
+
+        let emptyState = element("history-empty-state", in: app)
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 2))
+        captureScreenshot(named: "history-native-empty-state", of: app)
+
+        allFilter.tap()
+        XCTAssertTrue(waitUntilSelected(allFilter))
+        XCTAssertTrue(waitUntilDeselected(favoritesFilter))
+        XCTAssertTrue(waitUntilAbsent(emptyState))
+        XCTAssertTrue(savedHistoryItem.waitForExistence(timeout: 3))
         savedHistoryItem.tap()
 
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 3))
