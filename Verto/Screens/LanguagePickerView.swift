@@ -42,29 +42,36 @@ struct LanguagePickerView: View {
             header
             segmentedControl
             searchBar
-            ScrollView(showsIndicators: false) {
+            List {
                 if hasSearchResults {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if showsAutoDetectRow {
-                            autoDetectCard
-                        }
-
-                        if !filteredRecentLanguages.isEmpty {
-                            languageSection("最近使用", languages: filteredRecentLanguages)
-                        }
-
-                        if !filteredLanguages.isEmpty {
-                            languageSection("全部语言", languages: filteredLanguages)
+                    if showsAutoDetectRow {
+                        Section {
+                            languageButton(.auto)
                         }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 8)
-                    .padding(.bottom, 30)
+
+                    if !filteredRecentLanguages.isEmpty {
+                        languageSection("最近使用", languages: filteredRecentLanguages)
+                    }
+
+                    if !filteredLanguages.isEmpty {
+                        languageSection("全部语言", languages: filteredLanguages)
+                    }
                 } else {
                     emptySearchState
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
             }
+            .listStyle(.insetGrouped)
+            .contentMargins(.top, 8, for: .scrollContent)
+            .contentMargins(.bottom, 30, for: .scrollContent)
+            .listSectionSpacing(8)
+            .scrollIndicators(.hidden)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("languagePicker.list")
         }
         .background(AppTheme.paper.ignoresSafeArea())
     }
@@ -212,22 +219,6 @@ struct LanguagePickerView: View {
         .accessibilityIdentifier("languagePicker.emptyState")
     }
 
-    private var autoDetectCard: some View {
-        Button {
-            sourceSelection = .auto
-            dismiss()
-        } label: {
-            LanguageRow(language: .auto, isSelected: activeSelection == .auto)
-        }
-        .buttonStyle(.plain)
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .softShadow(radius: 7, y: 2, opacity: 0.045)
-        .accessibilityLabel("自动检测，自动识别输入语言")
-        .accessibilityValue(activeSelection == .auto ? "已选择" : "")
-        .accessibilityHint("选择为翻译自语言")
-        .accessibilityIdentifier("languagePicker.language.auto")
-    }
-
     /// 「自动检测」仅对源语言开放，目标语言列表保持不变。
     private var showsAutoDetectRow: Bool {
         effectiveRole == .source && matchesSearch(.auto)
@@ -264,41 +255,40 @@ struct LanguagePickerView: View {
     }
 
     private func languageSection(_ title: String, languages: [Language]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: title)
-                .padding(.horizontal, 4)
-                .padding(.top, title == "全部语言" ? 10 : 0)
-
-            VStack(spacing: 0) {
-                ForEach(Array(languages.enumerated()), id: \.element.id) { index, language in
-                    Button {
-                        if effectiveRole == .source {
-                            sourceSelection = language
-                        } else {
-                            targetSelection = language
-                        }
-                        dismiss()
-                    } label: {
-                        LanguageRow(language: language, isSelected: language == activeSelection)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(language.nativeName)，\(language.localizedName)")
-                    .accessibilityValue(language == activeSelection ? "已选择" : "")
-                    // 整句成对，不做「选择为%@语言」的语序拼接——各语言语序不同。
-                    .accessibilityHint(effectiveRole == .source ? "选择为翻译自语言" : "选择为翻译到语言")
-                    .accessibilityIdentifier("languagePicker.language.\(language.code)")
-
-                    if index < languages.count - 1 {
-                        Rectangle()
-                            .fill(AppTheme.divider)
-                            .frame(height: 1)
-                            .padding(.leading, 16)
-                    }
-                }
+        Section {
+            ForEach(languages) { language in
+                languageButton(language)
             }
-            .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .softShadow(radius: 7, y: 2, opacity: 0.045)
+        } header: {
+            SectionLabel(text: title)
+                .textCase(nil)
         }
+    }
+
+    private func languageButton(_ language: Language) -> some View {
+        Button {
+            if effectiveRole == .source {
+                sourceSelection = language
+            } else {
+                targetSelection = language
+            }
+            dismiss()
+        } label: {
+            LanguageRow(language: language, isSelected: language == activeSelection)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            language.isAuto
+                ? Text("自动检测，自动识别输入语言")
+                : Text(verbatim: "\(language.nativeName)，\(language.localizedName)")
+        )
+        .accessibilityValue(language == activeSelection ? "已选择" : "")
+        // 整句成对，不做「选择为%@语言」的语序拼接——各语言语序不同。
+        .accessibilityHint(effectiveRole == .source ? "选择为翻译自语言" : "选择为翻译到语言")
+        .accessibilityIdentifier("languagePicker.language.\(language.code)")
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(AppTheme.card)
+        .listRowSeparatorTint(AppTheme.divider)
     }
 
     private var activeSelection: Language {
