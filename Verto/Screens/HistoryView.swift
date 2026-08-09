@@ -27,25 +27,27 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             header
             filterControl
-            ScrollView(showsIndicators: false) {
+            List {
                 if filteredItems.isEmpty {
                     emptyState
-                        .padding(.horizontal, 18)
-                        .padding(.top, 24)
+                        .listRowInsets(EdgeInsets(top: 24, leading: 18, bottom: 0, trailing: 18))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 } else {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if !items(for: "今天").isEmpty {
-                            historySection("今天", items: items(for: "今天"))
-                        }
-                        if !items(for: "昨天").isEmpty {
-                            historySection("昨天", items: items(for: "昨天"))
-                        }
+                    if !items(for: "今天").isEmpty {
+                        historySection("今天", items: items(for: "今天"))
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
-                    .padding(.bottom, 30)
+                    if !items(for: "昨天").isEmpty {
+                        historySection("昨天", items: items(for: "昨天"))
+                    }
                 }
             }
+            .listStyle(.plain)
+            // 保留旧列表的 16pt 顶距与 12pt 分区节奏；滚动和分区语义仍由 List 负责。
+            .contentMargins(.top, 16, for: .scrollContent)
+            .listSectionSpacing(12)
+            .scrollIndicators(.hidden)
+            .scrollContentBackground(.hidden)
         }
         .background(AppTheme.paper.ignoresSafeArea())
     }
@@ -133,27 +135,28 @@ struct HistoryView: View {
     }
 
     private func historySection(_ title: String, items: [HistoryItem]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Section {
+            ForEach(items) { item in
+                HistoryCard(
+                    item: item,
+                    onSelect: {
+                        onSelect(item)
+                        dismiss()
+                    },
+                    onToggleFavorite: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            session.toggleFavorite(for: item.id)
+                        }
+                    }
+                )
+                .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 12, trailing: 18))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        } header: {
             SectionLabel(text: title)
                 .padding(.horizontal, 4)
                 .padding(.top, title == "昨天" ? 8 : 0)
-
-            VStack(spacing: 12) {
-                ForEach(items) { item in
-                    HistoryCard(
-                        item: item,
-                        onSelect: {
-                            onSelect(item)
-                            dismiss()
-                        },
-                        onToggleFavorite: {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                                session.toggleFavorite(for: item.id)
-                            }
-                        }
-                    )
-                }
-            }
         }
     }
 

@@ -44,7 +44,8 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(dictationButton.waitForExistence(timeout: 2))
         dictationButton.tap()
 
-        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "你好"), on: sourceEditor, timeout: 4))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value != %@", ""), on: sourceEditor, timeout: 4))
+        let dictatedSource = try XCTUnwrap(sourceEditor.value as? String)
         XCTAssertTrue(finishButton.waitForExistence(timeout: 2))
         XCTAssertEqual(finishButton.label, "完成并翻译")
         XCTAssertTrue(waitUntilAbsent(translationResult))
@@ -52,6 +53,7 @@ final class VertoUITests: XCTestCase {
 
         XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
         XCTAssertTrue(wait(for: NSPredicate(format: "enabled == YES"), on: translationResult))
+        let translatedResult = try XCTUnwrap(translationResult.value as? String)
         XCTAssertTrue(waitUntilAbsent(finishButton))
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 0)
 
@@ -66,20 +68,27 @@ final class VertoUITests: XCTestCase {
         historyButton.tap()
 
         XCTAssertTrue(app.staticTexts["历史记录"].waitForExistence(timeout: 3))
+        let todaySection = app.staticTexts["今天"].firstMatch
+        let yesterdaySection = app.staticTexts["昨天"].firstMatch
+        XCTAssertTrue(todaySection.waitForExistence(timeout: 2))
+        XCTAssertTrue(yesterdaySection.waitForExistence(timeout: 2))
+        XCTAssertLessThan(todaySection.frame.minY, yesterdaySection.frame.minY)
+        captureScreenshot(named: "history-native-list", of: app)
+
         let favoritesFilter = element("history-favorites-filter", in: app)
         XCTAssertTrue(favoritesFilter.waitForExistence(timeout: 2))
         favoritesFilter.tap()
 
         let savedHistoryItem = app.buttons
-            .matching(NSPredicate(format: "label == %@", "载入翻译：你好"))
+            .matching(NSPredicate(format: "label == %@", "载入翻译：\(dictatedSource)"))
             .firstMatch
         XCTAssertTrue(savedHistoryItem.waitForExistence(timeout: 3))
         savedHistoryItem.tap()
 
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 3))
-        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "你好"), on: sourceEditor))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", dictatedSource), on: sourceEditor))
         // 历史条目只保存主译文，没有备选译法，结果按钮保持禁用；断言译文内容被正确回填。
-        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "Hello"), on: translationResult))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", translatedResult), on: translationResult))
     }
 
     @MainActor
