@@ -556,9 +556,9 @@ final class VertoUITests: XCTestCase {
         let customEngine = app.buttons["settings.engine.custom"].firstMatch
         let llmEngine = app.buttons["settings.engine.llm"].firstMatch
         let voiceSection = app.staticTexts["语音对话"].firstMatch
-        let speakAfter = element("settings.voicePlayback.speakAfterTranslation", in: app)
-        let textOnly = element("settings.voicePlayback.textOnly", in: app)
-        let headphonesOnly = element("settings.voicePlayback.speakOnlyWithHeadphones", in: app)
+        let speakAfter = app.buttons["settings.voicePlayback.speakAfterTranslation"].firstMatch
+        let textOnly = app.buttons["settings.voicePlayback.textOnly"].firstMatch
+        let headphonesOnly = app.buttons["settings.voicePlayback.speakOnlyWithHeadphones"].firstMatch
         XCTAssertTrue(form.waitForExistence(timeout: 3))
         XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
         XCTAssertTrue(engineSection.waitForExistence(timeout: 2))
@@ -577,6 +577,9 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(speakAfter.waitForExistence(timeout: 3))
         XCTAssertTrue(textOnly.waitForExistence(timeout: 2))
         XCTAssertTrue(headphonesOnly.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilSelected(speakAfter))
+        XCTAssertTrue(waitUntilDeselected(textOnly))
+        XCTAssertTrue(waitUntilDeselected(headphonesOnly))
         XCTAssertLessThan(engineSection.frame.minY, googleEngine.frame.minY)
         XCTAssertLessThan(googleEngine.frame.minY, customEngine.frame.minY)
         XCTAssertLessThan(customEngine.frame.minY, llmEngine.frame.minY)
@@ -584,10 +587,23 @@ final class VertoUITests: XCTestCase {
         XCTAssertLessThan(voiceSection.frame.minY, textOnly.frame.minY)
         XCTAssertLessThan(textOnly.frame.minY, speakAfter.frame.minY)
         XCTAssertLessThan(speakAfter.frame.minY, headphonesOnly.frame.minY)
-        captureScreenshot(named: "settings-native-form-top", of: app)
 
         XCTAssertTrue(waitUntilHittable(textOnly))
+        XCTAssertTrue(waitUntilHittable(speakAfter))
+        XCTAssertTrue(waitUntilHittable(headphonesOnly))
         textOnly.tap()
+        XCTAssertTrue(waitUntilSelected(textOnly))
+        XCTAssertTrue(waitUntilDeselected(speakAfter))
+        XCTAssertTrue(waitUntilDeselected(headphonesOnly))
+        speakAfter.tap()
+        XCTAssertTrue(waitUntilDeselected(textOnly))
+        XCTAssertTrue(waitUntilSelected(speakAfter))
+        XCTAssertTrue(waitUntilDeselected(headphonesOnly))
+        headphonesOnly.tap()
+        XCTAssertTrue(waitUntilDeselected(textOnly))
+        XCTAssertTrue(waitUntilDeselected(speakAfter))
+        XCTAssertTrue(waitUntilSelected(headphonesOnly))
+        captureScreenshot(named: "settings-native-form-top", of: app)
 
         let voiceSectionY = voiceSection.frame.minY
         let closeButtonY = closeButton.frame.minY
@@ -616,7 +632,7 @@ final class VertoUITests: XCTestCase {
         tabButton(named: "语音", in: app).tap()
         let playbackMenu = element("conversation-playback-menu", in: app)
         XCTAssertTrue(playbackMenu.waitForExistence(timeout: 3))
-        XCTAssertEqual(playbackMenu.label, "译文朗读方式：仅显示文字")
+        XCTAssertEqual(playbackMenu.label, "译文朗读方式：仅戴耳机时朗读")
     }
 
     @MainActor
