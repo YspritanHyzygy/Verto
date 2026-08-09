@@ -88,24 +88,23 @@ struct SettingsView: View {
 
     private var voicePlaybackSection: some View {
         Section {
-            ForEach(VoicePlaybackMode.allCases) { mode in
-                Button {
-                    select(mode)
-                } label: {
+            Picker("语音对话", selection: $settings.voicePlaybackMode) {
+                ForEach(VoicePlaybackMode.allCases) { mode in
                     SelectableRow(
                         title: mode.displayName,
-                        subtitle: mode.subtitle,
-                        isSelected: settings.voicePlaybackMode == mode
+                        subtitle: mode.subtitle
                     )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("settings.voicePlayback.\(mode.rawValue)")
+                    .tag(mode)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(mode.displayName)，\(mode.subtitle)")
-                .accessibilityValue(settings.voicePlaybackMode == mode ? "已选择" : "")
-                .accessibilityIdentifier("settings.voicePlayback.\(mode.rawValue)")
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(AppTheme.card)
-                .listRowSeparatorTint(AppTheme.divider)
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            .tint(AppTheme.terracotta)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .listRowBackground(AppTheme.card)
+            .listRowSeparatorTint(AppTheme.divider)
         } header: {
             SectionLabel(text: "语音对话")
                 .textCase(nil)
@@ -163,12 +162,6 @@ struct SettingsView: View {
             .padding(.top, 22)
     }
 
-    private func select(_ mode: VoicePlaybackMode) {
-        guard settings.voicePlaybackMode != mode else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        settings.voicePlaybackMode = mode
-    }
-
     private func select(_ mode: AppearanceMode) {
         guard settings.appearanceMode != mode else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -208,7 +201,8 @@ private struct EngineRow: View {
 private struct SelectableRow: View {
     let title: String
     let subtitle: String
-    let isSelected: Bool
+    /// nil 时由原生 Picker 绘制选中标记；外观行在第 12 轮前仍传 Bool。
+    var isSelected: Bool? = nil
 
     var body: some View {
         HStack {
@@ -223,13 +217,13 @@ private struct SelectableRow: View {
 
             Spacer()
 
-            if isSelected {
+            if isSelected == true {
                 Image(systemName: "checkmark")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(AppTheme.terracotta)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, isSelected == nil ? 0 : 16)
         .padding(.vertical, 14)
         .contentShape(Rectangle())
     }
