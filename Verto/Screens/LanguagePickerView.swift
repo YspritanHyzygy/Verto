@@ -114,33 +114,18 @@ struct LanguagePickerView: View {
     }
 
     private var emptySearchState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(AppTheme.faint)
-
-            VStack(spacing: 5) {
-                Text("未找到语言")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Text("请尝试其他名称或语言代码")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(AppTheme.muted)
-            }
-
+        ContentUnavailableView {
+            Label("未找到语言", systemImage: "magnifyingglass")
+        } description: {
+            Text("请尝试其他名称或语言代码")
+        } actions: {
             Button("清除搜索") {
                 searchText = ""
                 isSearchPresented = true
             }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(AppTheme.terracotta)
-            .buttonStyle(.plain)
             .accessibilityIdentifier("languagePicker.emptyState.clearButton")
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 86)
-        .padding(.horizontal, 30)
-        .accessibilityElement(children: .contain)
+        .tint(AppTheme.terracotta)
         .accessibilityIdentifier("languagePicker.emptyState")
     }
 

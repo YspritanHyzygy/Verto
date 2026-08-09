@@ -382,6 +382,29 @@ final class VertoUITests: XCTestCase {
         XCTAssertEqual(app.searchFields.count, 1)
         searchField.tap()
 
+        searchField.typeText("zzzz")
+        let emptyTitle = app.staticTexts["未找到语言"]
+        let emptyDescription = app.staticTexts["请尝试其他名称或语言代码"]
+        let clearSearch = app.buttons["清除搜索"]
+        XCTAssertTrue(emptyTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(emptyDescription.waitForExistence(timeout: 2))
+        XCTAssertTrue(clearSearch.waitForExistence(timeout: 2))
+        let languageRows = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "languagePicker.language.")
+        )
+        XCTAssertEqual(languageRows.count, 0)
+        captureScreenshot(named: "language-native-empty-state", of: app)
+
+        clearSearch.tap()
+        XCTAssertTrue(waitUntilAbsent(emptyTitle))
+        XCTAssertTrue(app.staticTexts["最近使用"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["全部语言"].waitForExistence(timeout: 2))
+        for code in ["en", "zh-Hans", "ja", "ko", "fr", "es", "de"] {
+            XCTAssertTrue(element("languagePicker.language.\(code)", in: app).waitForExistence(timeout: 2))
+        }
+        XCTAssertEqual(languageRows.count, 7)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+
         searchField.typeText("FRANCAIS")
         let french = element("languagePicker.language.fr", in: app)
         XCTAssertTrue(french.waitForExistence(timeout: 3))
