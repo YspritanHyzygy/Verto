@@ -75,9 +75,16 @@ final class VertoUITests: XCTestCase {
         XCTAssertLessThan(todaySection.frame.minY, yesterdaySection.frame.minY)
         captureScreenshot(named: "history-native-list", of: app)
 
+        let allFilter = element("history-all-filter", in: app)
         let favoritesFilter = element("history-favorites-filter", in: app)
+        XCTAssertTrue(allFilter.waitForExistence(timeout: 2))
         XCTAssertTrue(favoritesFilter.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilSelected(allFilter))
+        XCTAssertTrue(waitUntilDeselected(favoritesFilter))
         favoritesFilter.tap()
+        XCTAssertTrue(waitUntilSelected(favoritesFilter))
+        XCTAssertTrue(waitUntilDeselected(allFilter))
+        captureScreenshot(named: "history-native-filter-picker", of: app)
 
         let savedHistoryItem = app.buttons
             .matching(NSPredicate(format: "label == %@", "载入翻译：\(dictatedSource)"))
