@@ -62,24 +62,24 @@ struct SettingsView: View {
         .padding(.bottom, 4)
     }
 
-    // 现有 Row 自己负责内容内边距；Form 行统一清空系统 inset，避免两层间距叠加。
+    // 手写 Row 自己负责内边距；inline Picker 要让 Form inset 同时约束标签和系统勾。
     private var engineSection: some View {
         Section {
-            ForEach(TranslationEngine.allCases) { engine in
-                Button {
-                    select(engine)
-                } label: {
-                    EngineRow(engine: engine, isSelected: settings.translationEngine == engine)
+            Picker("翻译模型", selection: $settings.translationEngine) {
+                ForEach(TranslationEngine.allCases) { engine in
+                    EngineRow(engine: engine)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("settings.engine.\(engine.rawValue)")
+                        .tag(engine)
+                        .disabled(!engine.isAvailable)
                 }
-                .buttonStyle(.plain)
-                .disabled(!engine.isAvailable)
-                .accessibilityLabel("\(engine.displayName)，\(engine.subtitle)")
-                .accessibilityValue(accessibilityValue(for: engine))
-                .accessibilityIdentifier("settings.engine.\(engine.rawValue)")
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(AppTheme.card)
-                .listRowSeparatorTint(AppTheme.divider)
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            .tint(AppTheme.terracotta)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .listRowBackground(AppTheme.card)
+            .listRowSeparatorTint(AppTheme.divider)
         } header: {
             SectionLabel(text: "翻译模型")
                 .textCase(nil)
@@ -163,12 +163,6 @@ struct SettingsView: View {
             .padding(.top, 22)
     }
 
-    private func select(_ engine: TranslationEngine) {
-        guard engine.isAvailable, settings.translationEngine != engine else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        settings.translationEngine = engine
-    }
-
     private func select(_ mode: VoicePlaybackMode) {
         guard settings.voicePlaybackMode != mode else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -180,16 +174,10 @@ struct SettingsView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         settings.appearanceMode = mode
     }
-
-    private func accessibilityValue(for engine: TranslationEngine) -> String {
-        guard engine.isAvailable else { return String(localized: "即将推出") }
-        return settings.translationEngine == engine ? String(localized: "已选择") : ""
-    }
 }
 
 private struct EngineRow: View {
     let engine: TranslationEngine
-    let isSelected: Bool
 
     var body: some View {
         HStack {
@@ -211,15 +199,9 @@ private struct EngineRow: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(AppTheme.inset, in: Capsule())
-            } else if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(AppTheme.terracotta)
             }
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .contentShape(Rectangle())
     }
 }
 

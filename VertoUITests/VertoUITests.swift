@@ -552,7 +552,9 @@ final class VertoUITests: XCTestCase {
         let form = element("settings.form", in: app)
         let closeButton = element("settings.closeButton", in: app)
         let engineSection = app.staticTexts["翻译模型"].firstMatch
-        let googleEngine = element("settings.engine.google", in: app)
+        let googleEngine = app.buttons["settings.engine.google"].firstMatch
+        let customEngine = app.buttons["settings.engine.custom"].firstMatch
+        let llmEngine = app.buttons["settings.engine.llm"].firstMatch
         let voiceSection = app.staticTexts["语音对话"].firstMatch
         let speakAfter = element("settings.voicePlayback.speakAfterTranslation", in: app)
         let textOnly = element("settings.voicePlayback.textOnly", in: app)
@@ -561,12 +563,24 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
         XCTAssertTrue(engineSection.waitForExistence(timeout: 2))
         XCTAssertTrue(googleEngine.waitForExistence(timeout: 2))
+        XCTAssertTrue(customEngine.waitForExistence(timeout: 2))
+        XCTAssertTrue(llmEngine.waitForExistence(timeout: 2))
+        XCTAssertTrue(googleEngine.isEnabled)
+        XCTAssertFalse(customEngine.isEnabled)
+        XCTAssertFalse(llmEngine.isEnabled)
+        XCTAssertTrue(waitUntilSelected(googleEngine))
+        XCTAssertTrue(waitUntilDeselected(customEngine))
+        XCTAssertTrue(waitUntilDeselected(llmEngine))
+        XCTAssertTrue(customEngine.label.contains("即将推出"))
+        XCTAssertTrue(llmEngine.label.contains("即将推出"))
         XCTAssertTrue(voiceSection.waitForExistence(timeout: 2))
         XCTAssertTrue(speakAfter.waitForExistence(timeout: 3))
         XCTAssertTrue(textOnly.waitForExistence(timeout: 2))
         XCTAssertTrue(headphonesOnly.waitForExistence(timeout: 2))
         XCTAssertLessThan(engineSection.frame.minY, googleEngine.frame.minY)
-        XCTAssertLessThan(googleEngine.frame.minY, voiceSection.frame.minY)
+        XCTAssertLessThan(googleEngine.frame.minY, customEngine.frame.minY)
+        XCTAssertLessThan(customEngine.frame.minY, llmEngine.frame.minY)
+        XCTAssertLessThan(llmEngine.frame.minY, voiceSection.frame.minY)
         XCTAssertLessThan(voiceSection.frame.minY, textOnly.frame.minY)
         XCTAssertLessThan(textOnly.frame.minY, speakAfter.frame.minY)
         XCTAssertLessThan(speakAfter.frame.minY, headphonesOnly.frame.minY)
