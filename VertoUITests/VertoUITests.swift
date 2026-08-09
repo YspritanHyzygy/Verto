@@ -376,10 +376,27 @@ final class VertoUITests: XCTestCase {
         let app = launchApp(mode: "text", sheet: "language-target")
 
         XCTAssertTrue(app.staticTexts["选择语言"].waitForExistence(timeout: 3))
-        let searchField = element("languagePicker.searchField", in: app)
+        XCTAssertTrue(element("languagePicker.closeButton", in: app).waitForExistence(timeout: 2))
+        let searchField = app.searchFields["搜索语言"].firstMatch
         XCTAssertTrue(searchField.waitForExistence(timeout: 2))
+        XCTAssertEqual(app.searchFields.count, 1)
         searchField.tap()
-        searchField.typeText("ja")
+
+        searchField.typeText("FRANCAIS")
+        let french = element("languagePicker.language.fr", in: app)
+        XCTAssertTrue(french.waitForExistence(timeout: 3))
+        captureScreenshot(named: "language-native-search", of: app)
+
+        let deleteKey = XCUIKeyboardKey.delete.rawValue
+        searchField.typeText(String(repeating: deleteKey, count: 8))
+        searchField.typeText("德语")
+        XCTAssertTrue(waitUntilAbsent(french))
+        let german = element("languagePicker.language.de", in: app)
+        XCTAssertTrue(german.waitForExistence(timeout: 3))
+
+        searchField.typeText(String(repeating: deleteKey, count: 2))
+        searchField.typeText("JA")
+        XCTAssertTrue(waitUntilAbsent(german))
 
         let japanese = element("languagePicker.language.ja", in: app)
         XCTAssertTrue(japanese.waitForExistence(timeout: 3))
