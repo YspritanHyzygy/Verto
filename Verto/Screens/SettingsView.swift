@@ -24,33 +24,23 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 8) {
-                    SectionLabel(text: "翻译模型")
-                        .padding(.horizontal, 4)
-                    engineCard
+            Form {
+                engineSection
+                voicePlaybackSection
+                preferenceSection
+                appearanceSection
 
-                    SectionLabel(text: "语音对话")
-                        .padding(.horizontal, 4)
-                        .padding(.top, 14)
-                    voicePlaybackCard
-
-                    SectionLabel(text: "通用偏好")
-                        .padding(.horizontal, 4)
-                        .padding(.top, 14)
-                    preferenceCard
-
-                    SectionLabel(text: "外观")
-                        .padding(.horizontal, 4)
-                        .padding(.top, 14)
-                    appearanceCard
-
-                    footer
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 30)
+                footer
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
+            .formStyle(.grouped)
+            .contentMargins(.top, 16, for: .scrollContent)
+            .contentMargins(.bottom, 30, for: .scrollContent)
+            .scrollIndicators(.hidden)
+            .scrollContentBackground(.hidden)
+            .accessibilityIdentifier("settings.form")
         }
         .background(AppTheme.paper.ignoresSafeArea())
     }
@@ -72,9 +62,10 @@ struct SettingsView: View {
         .padding(.bottom, 4)
     }
 
-    private var engineCard: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(TranslationEngine.allCases.enumerated()), id: \.element.id) { index, engine in
+    // 现有 Row 自己负责内容内边距；Form 行统一清空系统 inset，避免两层间距叠加。
+    private var engineSection: some View {
+        Section {
+            ForEach(TranslationEngine.allCases) { engine in
                 Button {
                     select(engine)
                 } label: {
@@ -85,22 +76,19 @@ struct SettingsView: View {
                 .accessibilityLabel("\(engine.displayName)，\(engine.subtitle)")
                 .accessibilityValue(accessibilityValue(for: engine))
                 .accessibilityIdentifier("settings.engine.\(engine.rawValue)")
-
-                if index < TranslationEngine.allCases.count - 1 {
-                    Rectangle()
-                        .fill(AppTheme.divider)
-                        .frame(height: 1)
-                        .padding(.leading, 16)
-                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(AppTheme.card)
+                .listRowSeparatorTint(AppTheme.divider)
             }
+        } header: {
+            SectionLabel(text: "翻译模型")
+                .textCase(nil)
         }
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .softShadow(radius: 7, y: 2, opacity: 0.045)
     }
 
-    private var voicePlaybackCard: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(VoicePlaybackMode.allCases.enumerated()), id: \.element.id) { index, mode in
+    private var voicePlaybackSection: some View {
+        Section {
+            ForEach(VoicePlaybackMode.allCases) { mode in
                 Button {
                     select(mode)
                 } label: {
@@ -114,22 +102,36 @@ struct SettingsView: View {
                 .accessibilityLabel("\(mode.displayName)，\(mode.subtitle)")
                 .accessibilityValue(settings.voicePlaybackMode == mode ? "已选择" : "")
                 .accessibilityIdentifier("settings.voicePlayback.\(mode.rawValue)")
-
-                if index < VoicePlaybackMode.allCases.count - 1 {
-                    Rectangle()
-                        .fill(AppTheme.divider)
-                        .frame(height: 1)
-                        .padding(.leading, 16)
-                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(AppTheme.card)
+                .listRowSeparatorTint(AppTheme.divider)
             }
+        } header: {
+            SectionLabel(text: "语音对话")
+                .textCase(nil)
         }
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .softShadow(radius: 7, y: 2, opacity: 0.045)
     }
 
-    private var appearanceCard: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(AppearanceMode.allCases.enumerated()), id: \.element.id) { index, mode in
+    private var preferenceSection: some View {
+        Section {
+            ToggleRow(
+                title: String(localized: "翻译后自动朗读译文"),
+                subtitle: String(localized: "完成翻译后自动播放语音"),
+                isOn: $settings.autoSpeaksTranslation
+            )
+            .accessibilityIdentifier("settings.autoSpeakToggle")
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(AppTheme.card)
+            .listRowSeparatorTint(AppTheme.divider)
+        } header: {
+            SectionLabel(text: "通用偏好")
+                .textCase(nil)
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            ForEach(AppearanceMode.allCases) { mode in
                 Button {
                     select(mode)
                 } label: {
@@ -143,30 +145,14 @@ struct SettingsView: View {
                 .accessibilityLabel("\(mode.displayName)，\(mode.subtitle)")
                 .accessibilityValue(settings.appearanceMode == mode ? "已选择" : "")
                 .accessibilityIdentifier("settings.appearance.\(mode.rawValue)")
-
-                if index < AppearanceMode.allCases.count - 1 {
-                    Rectangle()
-                        .fill(AppTheme.divider)
-                        .frame(height: 1)
-                        .padding(.leading, 16)
-                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(AppTheme.card)
+                .listRowSeparatorTint(AppTheme.divider)
             }
+        } header: {
+            SectionLabel(text: "外观")
+                .textCase(nil)
         }
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .softShadow(radius: 7, y: 2, opacity: 0.045)
-    }
-
-    private var preferenceCard: some View {
-        VStack(spacing: 0) {
-            ToggleRow(
-                title: String(localized: "翻译后自动朗读译文"),
-                subtitle: String(localized: "完成翻译后自动播放语音"),
-                isOn: $settings.autoSpeaksTranslation
-            )
-            .accessibilityIdentifier("settings.autoSpeakToggle")
-        }
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .softShadow(radius: 7, y: 2, opacity: 0.045)
     }
 
     private var footer: some View {

@@ -546,22 +546,63 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsVoicePlaybackModeSelection() throws {
+    func testSettingsFormSectionsScrollAndVoicePlaybackSelection() throws {
         let app = launchApp(mode: "text", sheet: "settings")
 
+        let form = element("settings.form", in: app)
+        let closeButton = element("settings.closeButton", in: app)
+        let engineSection = app.staticTexts["翻译模型"].firstMatch
+        let googleEngine = element("settings.engine.google", in: app)
+        let voiceSection = app.staticTexts["语音对话"].firstMatch
         let speakAfter = element("settings.voicePlayback.speakAfterTranslation", in: app)
         let textOnly = element("settings.voicePlayback.textOnly", in: app)
         let headphonesOnly = element("settings.voicePlayback.speakOnlyWithHeadphones", in: app)
+        XCTAssertTrue(form.waitForExistence(timeout: 3))
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(engineSection.waitForExistence(timeout: 2))
+        XCTAssertTrue(googleEngine.waitForExistence(timeout: 2))
+        XCTAssertTrue(voiceSection.waitForExistence(timeout: 2))
         XCTAssertTrue(speakAfter.waitForExistence(timeout: 3))
         XCTAssertTrue(textOnly.waitForExistence(timeout: 2))
         XCTAssertTrue(headphonesOnly.waitForExistence(timeout: 2))
+        XCTAssertLessThan(engineSection.frame.minY, googleEngine.frame.minY)
+        XCTAssertLessThan(googleEngine.frame.minY, voiceSection.frame.minY)
+        XCTAssertLessThan(voiceSection.frame.minY, textOnly.frame.minY)
+        XCTAssertLessThan(textOnly.frame.minY, speakAfter.frame.minY)
+        XCTAssertLessThan(speakAfter.frame.minY, headphonesOnly.frame.minY)
+        captureScreenshot(named: "settings-native-form-top", of: app)
 
-        // 默认选中「翻译完自动朗读」。
-        XCTAssertEqual(speakAfter.value as? String, "已选择")
-
+        XCTAssertTrue(waitUntilHittable(textOnly))
         textOnly.tap()
-        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "已选择"), on: textOnly))
-        XCTAssertEqual(speakAfter.value as? String, "")
+
+        let voiceSectionY = voiceSection.frame.minY
+        let closeButtonY = closeButton.frame.minY
+        let dragStart = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+        let dragEnd = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.36))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd)
+
+        let preferenceSection = app.staticTexts["通用偏好"].firstMatch
+        let autoSpeak = element("settings.autoSpeakToggle", in: app)
+        let appearanceSection = app.staticTexts["外观"].firstMatch
+        let systemAppearance = element("settings.appearance.system", in: app)
+        XCTAssertLessThan(voiceSection.frame.minY, voiceSectionY)
+        XCTAssertEqual(closeButton.frame.minY, closeButtonY, accuracy: 1)
+        XCTAssertTrue(preferenceSection.waitForExistence(timeout: 2))
+        XCTAssertTrue(autoSpeak.waitForExistence(timeout: 2))
+        XCTAssertTrue(appearanceSection.waitForExistence(timeout: 2))
+        XCTAssertTrue(systemAppearance.waitForExistence(timeout: 2))
+        XCTAssertLessThan(preferenceSection.frame.minY, autoSpeak.frame.minY)
+        XCTAssertLessThan(autoSpeak.frame.minY, appearanceSection.frame.minY)
+        XCTAssertLessThan(appearanceSection.frame.minY, systemAppearance.frame.minY)
+        XCTAssertTrue(waitUntilHittable(systemAppearance))
+        captureScreenshot(named: "settings-native-form-scrolled", of: app)
+
+        closeButton.tap()
+        XCTAssertTrue(waitUntilAbsent(form))
+        tabButton(named: "语音", in: app).tap()
+        let playbackMenu = element("conversation-playback-menu", in: app)
+        XCTAssertTrue(playbackMenu.waitForExistence(timeout: 3))
+        XCTAssertEqual(playbackMenu.label, "译文朗读方式：仅显示文字")
     }
 
     @MainActor
