@@ -94,49 +94,23 @@ struct LanguagePickerView: View {
     }
 
     private var segmentedControl: some View {
-        HStack(spacing: 0) {
-            segment(role: .target)
-            segment(role: .source)
+        Picker("语言方向", selection: $effectiveRole) {
+            Text(LanguageSelectionRole.target.title)
+                .tag(LanguageSelectionRole.target)
+                .accessibilityIdentifier("languagePicker.role.target")
+            Text(LanguageSelectionRole.source.title)
+                .tag(LanguageSelectionRole.source)
+                .accessibilityIdentifier("languagePicker.role.source")
         }
-        .padding(3)
-        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .tint(AppTheme.terracotta)
         .padding(.horizontal, 18)
         .padding(.top, 16)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("语言方向")
         .accessibilityIdentifier("languagePicker.roleSelector")
-    }
-
-    private func segment(role segmentRole: LanguageSelectionRole) -> some View {
-        let title = segmentRole.title
-        let isActive = effectiveRole == segmentRole
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                effectiveRole = segmentRole
-            }
+        .onChange(of: effectiveRole) { _, _ in
             isSearchPresented = true
-        } label: {
-            Text(title)
-                .font(.system(size: 14, weight: isActive ? .semibold : .medium))
-                .foregroundStyle(isActive ? AppTheme.ink : AppTheme.muted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(
-                    Group {
-                        if isActive {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(AppTheme.card)
-                                .softShadow(radius: 4, y: 1, opacity: 0.06)
-                        }
-                    }
-                )
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(isActive ? "已选择" : "未选择")
-        .accessibilityIdentifier("languagePicker.role.\(segmentRole.rawValue)")
     }
 
     private var emptySearchState: some View {
