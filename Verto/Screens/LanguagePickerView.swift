@@ -24,7 +24,7 @@ struct LanguagePickerView: View {
     @Binding var targetSelection: Language
     @State private var effectiveRole: LanguageSelectionRole
     @State private var searchText = ""
-    @FocusState private var isSearchFocused: Bool
+    @State private var isSearchPresented = false
 
     init(
         role: LanguageSelectionRole,
@@ -38,65 +38,59 @@ struct LanguagePickerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            segmentedControl
-            searchBar
-            List {
-                if hasSearchResults {
-                    if showsAutoDetectRow {
-                        Section {
-                            languageButton(.auto)
+        NavigationStack {
+            VStack(spacing: 0) {
+                segmentedControl
+                List {
+                    if hasSearchResults {
+                        if showsAutoDetectRow {
+                            Section {
+                                languageButton(.auto)
+                            }
                         }
-                    }
 
-                    if !filteredRecentLanguages.isEmpty {
-                        languageSection("最近使用", languages: filteredRecentLanguages)
-                    }
+                        if !filteredRecentLanguages.isEmpty {
+                            languageSection("最近使用", languages: filteredRecentLanguages)
+                        }
 
-                    if !filteredLanguages.isEmpty {
-                        languageSection("全部语言", languages: filteredLanguages)
+                        if !filteredLanguages.isEmpty {
+                            languageSection("全部语言", languages: filteredLanguages)
+                        }
+                    } else {
+                        emptySearchState
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
-                } else {
-                    emptySearchState
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                }
+                .listStyle(.insetGrouped)
+                .contentMargins(.top, 8, for: .scrollContent)
+                .contentMargins(.bottom, 30, for: .scrollContent)
+                .listSectionSpacing(8)
+                .scrollIndicators(.hidden)
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("languagePicker.list")
+            }
+            .background(AppTheme.paper.ignoresSafeArea())
+            .navigationTitle("选择语言")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    SheetCloseButton { dismiss() }
+                        .accessibilityLabel("关闭语言选择")
+                        .accessibilityIdentifier("languagePicker.closeButton")
                 }
             }
-            .listStyle(.insetGrouped)
-            .contentMargins(.top, 8, for: .scrollContent)
-            .contentMargins(.bottom, 30, for: .scrollContent)
-            .listSectionSpacing(8)
-            .scrollIndicators(.hidden)
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .accessibilityIdentifier("languagePicker.list")
+            .searchable(
+                text: $searchText,
+                isPresented: $isSearchPresented,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("搜索语言")
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
         }
-        .background(AppTheme.paper.ignoresSafeArea())
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("选择语言")
-                    .font(.system(size: 28, weight: .bold))
-                    .tracking(-0.5)
-                    .foregroundStyle(AppTheme.ink)
-                Text(effectiveRole.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(AppTheme.muted)
-                    .accessibilityIdentifier("languagePicker.currentRole")
-            }
-
-            Spacer()
-            SheetCloseButton { dismiss() }
-                .accessibilityLabel("关闭语言选择")
-                .accessibilityIdentifier("languagePicker.closeButton")
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 20)
-        .padding(.bottom, 4)
     }
 
     private var segmentedControl: some View {
@@ -121,7 +115,7 @@ struct LanguagePickerView: View {
             withAnimation(.easeInOut(duration: 0.18)) {
                 effectiveRole = segmentRole
             }
-            isSearchFocused = true
+            isSearchPresented = true
         } label: {
             Text(title)
                 .font(.system(size: 14, weight: isActive ? .semibold : .medium))
@@ -145,49 +139,6 @@ struct LanguagePickerView: View {
         .accessibilityIdentifier("languagePicker.role.\(segmentRole.rawValue)")
     }
 
-    private var searchBar: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(AppTheme.faint)
-
-            TextField("搜索语言", text: $searchText)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(AppTheme.ink)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .focused($isSearchFocused)
-                .onSubmit {
-                    isSearchFocused = false
-                }
-                .accessibilityLabel("搜索语言")
-                .accessibilityHint("可按语言名称或语言代码搜索")
-                .accessibilityIdentifier("languagePicker.searchField")
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                    isSearchFocused = true
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(AppTheme.faint)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("清除搜索")
-                .accessibilityIdentifier("languagePicker.clearSearchButton")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .softShadow(radius: 5, y: 1, opacity: 0.04)
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
-        .padding(.bottom, 6)
-    }
-
     private var emptySearchState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
@@ -205,7 +156,7 @@ struct LanguagePickerView: View {
 
             Button("清除搜索") {
                 searchText = ""
-                isSearchFocused = true
+                isSearchPresented = true
             }
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(AppTheme.terracotta)
