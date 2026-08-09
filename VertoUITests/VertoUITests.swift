@@ -217,6 +217,30 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
+    func testAlternativeTranslationSelectionUpdatesResultAndDismissesSheet() throws {
+        let app = launchApp(mode: "text")
+        let translationResult = element("translation-result", in: app)
+
+        XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
+        XCTAssertTrue(wait(for: NSPredicate(format: "enabled == YES"), on: translationResult))
+        let initialResult = try XCTUnwrap(translationResult.value as? String)
+
+        translationResult.tap()
+
+        let secondAlternative = element("alternative-2", in: app)
+        XCTAssertTrue(secondAlternative.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntilHittable(secondAlternative))
+        captureScreenshot(named: "alternative-translations-list", of: app)
+        secondAlternative.tap()
+
+        XCTAssertTrue(waitUntilAbsent(secondAlternative))
+        XCTAssertTrue(wait(
+            for: NSPredicate(format: "value != %@", initialResult),
+            on: translationResult
+        ))
+    }
+
+    @MainActor
     func testReduceMotionTextEntryCompletesInStableResultState() throws {
         let app = launchApp(mode: "text", reduceMotion: true)
 
