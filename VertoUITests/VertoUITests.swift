@@ -410,6 +410,43 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
+    func testLanguageRolePickerKeepsSearchActiveAndUpdatesSourceSelection() throws {
+        let app = launchApp(mode: "text", sheet: "language-target")
+
+        let rolePicker = app.segmentedControls["languagePicker.roleSelector"].firstMatch
+        XCTAssertTrue(rolePicker.waitForExistence(timeout: 3))
+        let targetRole = rolePicker.buttons["翻译到"]
+        let sourceRole = rolePicker.buttons["翻译自"]
+        XCTAssertTrue(targetRole.waitForExistence(timeout: 2))
+        XCTAssertTrue(sourceRole.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilSelected(targetRole))
+        XCTAssertTrue(waitUntilDeselected(sourceRole))
+
+        let searchField = app.searchFields["搜索语言"].firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 2))
+        searchField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+        searchField.typeText("DE")
+        let german = element("languagePicker.language.de", in: app)
+        XCTAssertTrue(german.waitForExistence(timeout: 3))
+
+        sourceRole.tap()
+        XCTAssertTrue(waitUntilSelected(sourceRole))
+        XCTAssertTrue(waitUntilDeselected(targetRole))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "DE"), on: searchField))
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertTrue(german.exists)
+        captureScreenshot(named: "language-native-role-picker", of: app)
+        german.tap()
+        XCTAssertTrue(waitUntilAbsent(rolePicker))
+
+        let selectedSource = element("language-pair-source-button", in: app)
+        let unchangedTarget = element("language-pair-target-button", in: app)
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "Deutsch"), on: selectedSource))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "English"), on: unchangedTarget))
+    }
+
+    @MainActor
     func testLanguageListSectionsScrollAndSourceSelection() throws {
         let app = launchApp(mode: "text", sheet: "language-source")
 
