@@ -393,6 +393,53 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
+    func testLanguageListSectionsScrollAndSourceSelection() throws {
+        let app = launchApp(mode: "text", sheet: "language-source")
+
+        let title = app.staticTexts["选择语言"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        let list = element("languagePicker.list", in: app)
+        let autoDetect = element("languagePicker.language.auto", in: app)
+        let recentSection = app.staticTexts["最近使用"].firstMatch
+        let english = element("languagePicker.language.en", in: app)
+        let chinese = element("languagePicker.language.zh-Hans", in: app)
+        let allLanguagesSection = app.staticTexts["全部语言"].firstMatch
+        let japanese = element("languagePicker.language.ja", in: app)
+
+        XCTAssertTrue(list.waitForExistence(timeout: 2))
+        XCTAssertTrue(autoDetect.waitForExistence(timeout: 2))
+        XCTAssertTrue(recentSection.waitForExistence(timeout: 2))
+        XCTAssertTrue(english.waitForExistence(timeout: 2))
+        XCTAssertTrue(chinese.waitForExistence(timeout: 2))
+        XCTAssertTrue(allLanguagesSection.waitForExistence(timeout: 2))
+        XCTAssertTrue(japanese.waitForExistence(timeout: 2))
+        XCTAssertLessThan(autoDetect.frame.minY, recentSection.frame.minY)
+        XCTAssertLessThan(recentSection.frame.minY, english.frame.minY)
+        XCTAssertLessThan(english.frame.minY, chinese.frame.minY)
+        XCTAssertLessThan(chinese.frame.minY, allLanguagesSection.frame.minY)
+        XCTAssertLessThan(allLanguagesSection.frame.minY, japanese.frame.minY)
+        captureScreenshot(named: "language-native-list-top", of: app)
+
+        let german = element("languagePicker.language.de", in: app)
+        XCTAssertTrue(german.waitForExistence(timeout: 2))
+        let titleY = title.frame.minY
+        let germanY = german.frame.minY
+        let dragStart = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+        let dragEnd = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd)
+        XCTAssertLessThan(german.frame.minY, germanY)
+        XCTAssertEqual(title.frame.minY, titleY, accuracy: 1)
+        XCTAssertTrue(waitUntilHittable(german))
+        captureScreenshot(named: "language-native-list-scrolled", of: app)
+        german.tap()
+
+        XCTAssertFalse(title.waitForExistence(timeout: 2))
+        let selectedSource = element("language-pair-source-button", in: app)
+        XCTAssertTrue(selectedSource.waitForExistence(timeout: 3))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "Deutsch"), on: selectedSource))
+    }
+
+    @MainActor
     func testVoiceListeningProducesCommittedTurnThenPauses() throws {
         let app = launchApp(mode: "voice")
 
