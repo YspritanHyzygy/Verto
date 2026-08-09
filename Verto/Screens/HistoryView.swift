@@ -28,18 +28,11 @@ struct HistoryView: View {
             header
             filterControl
             List {
-                if filteredItems.isEmpty {
-                    emptyState
-                        .listRowInsets(EdgeInsets(top: 24, leading: 18, bottom: 0, trailing: 18))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                } else {
-                    if !items(for: "今天").isEmpty {
-                        historySection("今天", items: items(for: "今天"))
-                    }
-                    if !items(for: "昨天").isEmpty {
-                        historySection("昨天", items: items(for: "昨天"))
-                    }
+                if !items(for: "今天").isEmpty {
+                    historySection("今天", items: items(for: "今天"))
+                }
+                if !items(for: "昨天").isEmpty {
+                    historySection("昨天", items: items(for: "昨天"))
                 }
             }
             .listStyle(.plain)
@@ -48,6 +41,12 @@ struct HistoryView: View {
             .listSectionSpacing(12)
             .scrollIndicators(.hidden)
             .scrollContentBackground(.hidden)
+            .overlay {
+                if filteredItems.isEmpty {
+                    ContentUnavailableView("暂无收藏", systemImage: "star.slash")
+                        .accessibilityIdentifier("history-empty-state")
+                }
+            }
         }
         .background(AppTheme.paper.ignoresSafeArea())
     }
@@ -81,21 +80,6 @@ struct HistoryView: View {
         .tint(AppTheme.terracotta)
         .padding(.horizontal, 18)
         .padding(.top, 14)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "star.slash")
-                .font(.system(size: 26, weight: .medium))
-                .foregroundStyle(AppTheme.faint)
-            Text("暂无收藏")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(AppTheme.faint)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 34)
-        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .accessibilityIdentifier("history-empty-state")
     }
 
     private func historySection(_ title: String, items: [HistoryItem]) -> some View {
