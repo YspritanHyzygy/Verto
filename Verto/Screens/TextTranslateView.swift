@@ -1341,34 +1341,42 @@ private struct AlternativeTranslationsView: View {
                 Spacer()
                 SheetCloseButton { dismiss() }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
 
-            ForEach(Array(session.translationCandidates.enumerated()), id: \.offset) { index, alternative in
-                Button {
-                    session.translatedText = alternative
-                    session.saveCurrent()
-                    dismiss()
-                } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(verbatim: "\(index + 1)")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 24, height: 24)
-                            .background(AppTheme.terracotta, in: Circle())
-                        Text(alternative)
-                            .font(.system(size: 17, design: .serif))
-                            .foregroundStyle(AppTheme.ink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            List {
+                ForEach(session.translationCandidates.indices, id: \.self) { index in
+                    let alternative = session.translationCandidates[index]
+
+                    Button {
+                        session.translatedText = alternative
+                        session.saveCurrent()
+                        dismiss()
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(verbatim: "\(index + 1)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(AppTheme.terracotta, in: Circle())
+                            Text(alternative)
+                                .font(.system(size: 17, design: .serif))
+                                .foregroundStyle(AppTheme.ink)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(14)
+                        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                    .padding(14)
-                    .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("alternative-\(index + 1)")
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 12, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("alternative-\(index + 1)")
             }
-
-            Spacer(minLength: 0)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .padding(20)
         .background(AppTheme.paper.ignoresSafeArea())
     }
 }
