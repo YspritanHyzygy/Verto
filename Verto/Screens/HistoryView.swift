@@ -68,55 +68,19 @@ struct HistoryView: View {
     }
 
     private var filterControl: some View {
-        HStack(spacing: 0) {
-            filterSegment("全部", active: !showFavoritesOnly, identifier: "history-all-filter") {
-                showFavoritesOnly = false
-            }
-            filterSegment(
-                "收藏",
-                active: showFavoritesOnly,
-                systemImage: "star",
-                identifier: "history-favorites-filter"
-            ) {
-                showFavoritesOnly = true
-            }
+        Picker("历史记录", selection: $showFavoritesOnly) {
+            Text("全部")
+                .tag(false)
+                .accessibilityIdentifier("history-all-filter")
+            Label("收藏", systemImage: "star")
+                .tag(true)
+                .accessibilityIdentifier("history-favorites-filter")
         }
-        .padding(3)
-        .background(AppTheme.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .tint(AppTheme.terracotta)
         .padding(.horizontal, 18)
         .padding(.top, 14)
-    }
-
-    private func filterSegment(
-        _ title: String,
-        active: Bool,
-        systemImage: String? = nil,
-        identifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                // 调用侧传原始字面量当 key，此处查表渲染。
-                Text(LocalizedStringKey(title))
-            }
-            .font(.system(size: 14, weight: active ? .semibold : .medium))
-            .foregroundStyle(active ? AppTheme.ink : AppTheme.muted)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background {
-                if active {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(AppTheme.card)
-                        .softShadow(radius: 4, y: 1, opacity: 0.06)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
     }
 
     private var emptyState: some View {
