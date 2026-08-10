@@ -16,6 +16,22 @@
 
 import XCTest
 
+/// 所有「等界面落到某个状态」的断言共用这一个上限。
+///
+/// 为什么不是 3 秒：`waitUntilSelected/Deselected/Hittable` 走
+/// `XCTNSPredicateExpectation`，而 `XCUIElement` 的 `selected`/`hittable`
+/// 不支持 KVO，谓词只能被周期性重算，每次重算都要拍一次无障碍树快照。
+/// 实测（4 worker 并行、结果包 verto-base-1.xcresult）单次求值耗时
+/// 1.5–2.3 秒，3 秒预算只够 1–2 次采样：外观选择器点击后，新选中行 665 行
+/// 断言通过，旧选中行 666 行却在 2.31 秒后判负——而 4 秒时同一状态已经正常。
+/// 状态是到的，只是没赶上采样窗口。
+///
+/// 为什么是 10 秒：app 里最长的过渡是 0.45 秒的展开弹簧，翻译与语音都由
+/// `--uitest-canned-*` 同步返回，语义上需要的预算不到 1 秒；10 秒是纯粹的
+/// 负载余量。它只是失败判定的截止线——条件一成立立刻返回，**绿色路径上一
+/// 毫秒都不多花**，真坏了也照样在 10 秒内报错。
+private let settleTimeout: TimeInterval = 10
+
 final class VertoUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -44,7 +60,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(dictationButton.waitForExistence(timeout: 2))
         dictationButton.tap()
 
-        XCTAssertTrue(wait(for: NSPredicate(format: "value != %@", ""), on: sourceEditor, timeout: 4))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value != %@", ""), on: sourceEditor))
         let dictatedSource = try XCTUnwrap(sourceEditor.value as? String)
         XCTAssertTrue(finishButton.waitForExistence(timeout: 2))
         XCTAssertEqual(finishButton.label, "完成并翻译")
@@ -150,6 +166,10 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(finishButton.waitForExistence(timeout: 2))
         XCTAssertEqual(finishButton.label, "完成并翻译")
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 1)
+        // 这里等的是 UIKit 落地 .toolbar(.hidden, for: .tabBar) 的安全区变更——系统异步
+        // 执行，见 TextTranslateView.swift 顶部关于标签栏安全区的注释。本文件只有这类
+        // 紧跟编辑态切换的位置才等系统事件；其余「仍然隐藏」的复检用瞬时 exists，
+        // 免得截止线把弹窗关闭时工具栏短暂回插这种回归悄悄吸收掉。
         XCTAssertTrue(waitUntilAbsent(tabBar))
         XCTAssertTrue(waitUntilAbsent(translationResult))
 
@@ -182,7 +202,7 @@ final class VertoUITests: XCTestCase {
             on: sourceEditor
         ))
         XCTAssertTrue(finishButton.exists)
-        XCTAssertTrue(waitUntilAbsent(tabBar))
+        XCTAssertFalse(tabBar.exists)
         XCTAssertTrue(waitUntilAbsent(translationResult))
 
         clearButton.tap()
@@ -201,7 +221,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(japanese.waitForExistence(timeout: 3))
         japanese.tap()
 
-        XCTAssertFalse(app.staticTexts["选择语言"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["选择语言"].waitForNonExistence(timeout: settleTimeout))
         XCTAssertTrue(finishButton.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilHittable(finishButton))
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 1)
@@ -210,7 +230,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "Good morning!"), on: sourceEditor))
         XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "中文"), on: sourceLanguageButton))
         XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "日本語"), on: targetLanguageButton))
-        XCTAssertTrue(waitUntilAbsent(tabBar))
+        XCTAssertFalse(tabBar.exists)
         XCTAssertTrue(waitUntilAbsent(translationResult))
 
         XCTAssertTrue(swapLanguageButton.waitForExistence(timeout: 2))
@@ -224,7 +244,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "中文"), on: sourceLanguageButton))
         XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "日本語"), on: targetLanguageButton))
         XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "Good morning!"), on: sourceEditor))
-        XCTAssertTrue(waitUntilAbsent(tabBar))
+        XCTAssertFalse(tabBar.exists)
         XCTAssertTrue(waitUntilAbsent(translationResult))
         captureScreenshot(named: "text-draft-focused", of: app)
 
@@ -425,7 +445,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(japanese.waitForExistence(timeout: 3))
         japanese.tap()
 
-        XCTAssertFalse(app.staticTexts["选择语言"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["选择语言"].waitForNonExistence(timeout: settleTimeout))
         let selectedTarget = app.buttons
             .matching(NSPredicate(format: "label == %@", "日本語"))
             .firstMatch
@@ -510,7 +530,7 @@ final class VertoUITests: XCTestCase {
         captureScreenshot(named: "language-native-list-scrolled", of: app)
         german.tap()
 
-        XCTAssertFalse(title.waitForExistence(timeout: 2))
+        XCTAssertTrue(title.waitForNonExistence(timeout: settleTimeout))
         let selectedSource = element("language-pair-source-button", in: app)
         XCTAssertTrue(selectedSource.waitForExistence(timeout: 3))
         XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "Deutsch"), on: selectedSource))
@@ -538,10 +558,10 @@ final class VertoUITests: XCTestCase {
         let committedTranslation = firstElement(containingLabel: "早上好", in: app)
         XCTAssertTrue(committedTranslation.waitForExistence(timeout: 3))
         // 自动检测模式：状态显示语言对双语。
-        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "正在聆听 · English / 中文"), on: listeningStatus, timeout: 6))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "正在聆听 · English / 中文"), on: listeningStatus))
 
         microphone.tap()
-        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "已暂停 · 轻点继续"), on: listeningStatus, timeout: 6))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "已暂停 · 轻点继续"), on: listeningStatus))
         XCTAssertEqual(microphone.label, "开始聆听")
     }
 
@@ -640,17 +660,14 @@ final class VertoUITests: XCTestCase {
         let app = launchApp(mode: "text", sheet: "settings")
         let form = element("settings.form", in: app)
         XCTAssertTrue(form.waitForExistence(timeout: 3))
-        form.swipeUp()
 
         let systemAppearance = app.buttons["settings.appearance.system"].firstMatch
         let lightAppearance = app.buttons["settings.appearance.light"].firstMatch
         let darkAppearance = app.buttons["settings.appearance.dark"].firstMatch
+        // 滚到最下面那一行为止：它可点了，它上面的两行必然也已实现并可点。
+        XCTAssertTrue(scrollUntilHittable(darkAppearance, in: form))
         XCTAssertTrue(systemAppearance.waitForExistence(timeout: 2))
         XCTAssertTrue(lightAppearance.waitForExistence(timeout: 2))
-        XCTAssertTrue(darkAppearance.waitForExistence(timeout: 2))
-        XCTAssertTrue(waitUntilHittable(systemAppearance))
-        XCTAssertTrue(waitUntilHittable(lightAppearance))
-        XCTAssertTrue(waitUntilHittable(darkAppearance))
         XCTAssertTrue(waitUntilSelected(systemAppearance))
         XCTAssertTrue(waitUntilDeselected(lightAppearance))
         XCTAssertTrue(waitUntilDeselected(darkAppearance))
@@ -681,14 +698,13 @@ final class VertoUITests: XCTestCase {
         let relaunchedForm = element("settings.form", in: relaunchedApp)
         XCTAssertTrue(relaunchedForm.waitForExistence(timeout: 3))
         captureScreenshot(named: "settings-appearance-dark-relaunch", of: relaunchedApp)
-        relaunchedForm.swipeUp()
 
         let relaunchedSystem = relaunchedApp.buttons["settings.appearance.system"].firstMatch
         let relaunchedLight = relaunchedApp.buttons["settings.appearance.light"].firstMatch
         let relaunchedDark = relaunchedApp.buttons["settings.appearance.dark"].firstMatch
+        XCTAssertTrue(scrollUntilHittable(relaunchedDark, in: relaunchedForm))
         XCTAssertTrue(relaunchedSystem.waitForExistence(timeout: 2))
         XCTAssertTrue(relaunchedLight.waitForExistence(timeout: 2))
-        XCTAssertTrue(relaunchedDark.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilDeselected(relaunchedSystem))
         XCTAssertTrue(waitUntilDeselected(relaunchedLight))
         XCTAssertTrue(waitUntilSelected(relaunchedDark))
@@ -750,7 +766,7 @@ final class VertoUITests: XCTestCase {
 
         microphone.tap()
         // 开始聆听后切走 tab：语音页会停止收音并记住暂停态。
-        XCTAssertTrue(wait(for: NSPredicate(format: "label BEGINSWITH %@", "正在"), on: listeningStatus, timeout: 6))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label BEGINSWITH %@", "正在"), on: listeningStatus))
 
         cameraMode.tap()
         let shutter = element("camera.shutterButton", in: app)
@@ -765,7 +781,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(waitUntilSelected(voiceMode))
         let restoredListeningStatus = element("conversation-listening-status", in: app)
         let restoredMicrophone = element("conversation-microphone-button", in: app)
-        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "已暂停 · 轻点继续"), on: restoredListeningStatus, timeout: 6))
+        XCTAssertTrue(wait(for: NSPredicate(format: "label == %@", "已暂停 · 轻点继续"), on: restoredListeningStatus))
         XCTAssertEqual(restoredMicrophone.label, "开始聆听")
 
         textMode.tap()
@@ -863,6 +879,43 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(camera.waitForExistence(timeout: 2), file: file, line: line)
     }
 
+    /// 把落在折叠线以下的行拖进可点区域，拖到就停。
+    ///
+    /// 为什么不用 `swipeUp()`：那是带惯性的甩动，静止位置由减速曲线决定——机器一忙，
+    /// 同一个手势可能停在目标上方，也可能冲过头把目标甩出顶部，后者等多久都等不到
+    /// hittable。这里每次只拖容器高度的 1/3：不足半屏，所以单次拖动不可能让目标从
+    /// 折叠线以下直接跨到顶部以外；每拖一次复查一次，一旦可点立刻停。
+    ///
+    /// 为什么不能靠"点击前框架会自动滚动到可见"：实测不够。设置表单里的行是**惰性
+    /// 实现**的——未滚动时 `settings.appearance.dark` 连 `exists` 都是 false（删掉
+    /// 滚动后该测试在 674 行 `waitForExistence` 直接判负），框架的 scroll-to-visible
+    /// 对还没进入元素树的行无能为力。
+    ///
+    /// 上限 6 次 = 两倍容器高度，覆盖设置表单四个分区的全部行程还留一倍余量。
+    @MainActor
+    @discardableResult
+    private func scrollUntilHittable(
+        _ element: XCUIElement,
+        in container: XCUIElement,
+        maxDrags: Int = 6
+    ) -> Bool {
+        for _ in 0..<maxDrags {
+            if element.exists, element.isHittable { return true }
+            dragUp(in: container, byFractionOfHeight: 1.0 / 3.0)
+        }
+        return element.exists && element.isHittable
+    }
+
+    /// 定长拖动。起点固定在容器 dy 0.78：再往下会进入底部安全区与首页指示条的系统
+    /// 边缘手势带，拖拽会被系统截走。`press` 0.05 秒是为了让触点先坐实，走 drag 而
+    /// 不是 flick——少了这 0.05 秒，落点又变回由惯性决定。
+    @MainActor
+    private func dragUp(in container: XCUIElement, byFractionOfHeight fraction: CGFloat) {
+        let start = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+        let end = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78 - fraction))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
     @MainActor
     private func waitUntilSelected(_ element: XCUIElement) -> Bool {
         wait(for: NSPredicate(format: "selected == YES"), on: element)
@@ -880,7 +933,11 @@ final class VertoUITests: XCTestCase {
 
     @MainActor
     private func waitUntilAbsent(_ element: XCUIElement) -> Bool {
-        wait(for: NSPredicate(format: "exists == NO"), on: element)
+        // 用原生 waitForNonExistence 而不是 "exists == NO" 谓词：两者读的都是
+        // exists，其定义就是「能否在无障碍树快照里匹配到」，而结果区那种
+        // .accessibilityHidden(true) 的隐藏同样把节点移出该树，所以语义逐字等价。
+        // 差别在于原生实现走 XCUITest 自己的等待，不受谓词期望那套粗采样周期限制。
+        element.waitForNonExistence(timeout: settleTimeout)
     }
 
     @MainActor
@@ -902,7 +959,7 @@ final class VertoUITests: XCTestCase {
     private func wait(
         for predicate: NSPredicate,
         on object: Any,
-        timeout: TimeInterval = 3
+        timeout: TimeInterval = settleTimeout
     ) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: object)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
