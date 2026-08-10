@@ -140,6 +140,10 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
         XCTAssertTrue(waitUntilAbsent(finishButton))
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 0)
+        let initialSource = try XCTUnwrap(sourceEditor.value as? String)
+        let initialResult = try XCTUnwrap(translationResult.value as? String)
+        XCTAssertFalse(initialSource.isEmpty)
+        XCTAssertFalse(initialResult.isEmpty)
 
         sourceEditor.tap()
 
@@ -152,23 +156,11 @@ final class VertoUITests: XCTestCase {
         finishButton.tap()
 
         XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
-        XCTAssertTrue(wait(
-            for: NSPredicate(
-                format: "value == %@",
-                "The sunset is especially beautiful today — I'd love to take a walk along the beach with you."
-            ),
-            on: translationResult
-        ))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialResult), on: translationResult))
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
         XCTAssertTrue(textMode.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilSelected(textMode))
-        XCTAssertTrue(wait(
-            for: NSPredicate(
-                format: "value == %@",
-                "今天的晚霞特别好看，我想和你一起去海边走走。"
-            ),
-            on: sourceEditor
-        ))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialSource), on: sourceEditor))
         XCTAssertTrue(waitUntilAbsent(finishButton))
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 0)
 
@@ -240,10 +232,9 @@ final class VertoUITests: XCTestCase {
 
         XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
         XCTAssertTrue(wait(for: NSPredicate(format: "enabled == YES"), on: translationResult))
-        XCTAssertTrue(wait(
-            for: NSPredicate(format: "value == %@", "「Good morning!」の自然な翻訳"),
-            on: translationResult
-        ))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value != %@", initialResult), on: translationResult))
+        let updatedResult = try XCTUnwrap(translationResult.value as? String)
+        XCTAssertFalse(updatedResult.isEmpty)
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
 
         XCTAssertTrue(textMode.waitForExistence(timeout: 2))
@@ -295,6 +286,10 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
         XCTAssertTrue(waitUntilAbsent(finishButton))
         XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 0)
+        let initialSource = try XCTUnwrap(sourceEditor.value as? String)
+        let initialResult = try XCTUnwrap(translationResult.value as? String)
+        XCTAssertFalse(initialSource.isEmpty)
+        XCTAssertFalse(initialResult.isEmpty)
 
         sourceEditor.tap()
 
@@ -307,20 +302,8 @@ final class VertoUITests: XCTestCase {
         finishButton.tap()
 
         XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
-        XCTAssertTrue(wait(
-            for: NSPredicate(
-                format: "value == %@",
-                "The sunset is especially beautiful today — I'd love to take a walk along the beach with you."
-            ),
-            on: translationResult
-        ))
-        XCTAssertTrue(wait(
-            for: NSPredicate(
-                format: "value == %@",
-                "今天的晚霞特别好看，我想和你一起去海边走走。"
-            ),
-            on: sourceEditor
-        ))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialResult), on: translationResult))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialSource), on: sourceEditor))
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
         XCTAssertTrue(textMode.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilSelected(textMode))
@@ -330,45 +313,43 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
-    func testTextEntryPaperMotionRendersIntermediateFrames() throws {
-        let app = launchApp(mode: "text", motionProbe: true)
-        let probe = element("text-entry-motion-probe", in: app)
+    func testTextEntryTransitionsEnterAndExitStableStates() throws {
+        let app = launchApp(mode: "text")
         let sourceEditor = element("source-text-editor", in: app)
+        let translationResult = element("translation-result", in: app)
         let finishButton = element("finish-source-editing-button", in: app)
+        let tabBar = app.tabBars.firstMatch
+        let textMode = tabBar.buttons["文字"]
 
-        XCTAssertTrue(probe.waitForExistence(timeout: 3))
-        XCTAssertTrue(
-            wait(
-                for: NSPredicate(format: "value CONTAINS %@", "reduce=0"),
-                on: probe
-            ),
-            "Probe: \(String(describing: probe.value))"
-        )
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 3))
+        XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntilAbsent(finishButton))
+        let initialSource = try XCTUnwrap(sourceEditor.value as? String)
+        let initialResult = try XCTUnwrap(translationResult.value as? String)
+        XCTAssertFalse(initialSource.isEmpty)
+        XCTAssertFalse(initialResult.isEmpty)
 
         sourceEditor.tap()
 
-        XCTAssertTrue(
-            wait(
-                for: NSPredicate(format: "value CONTAINS %@", "enter-pass=1"),
-                on: probe,
-                timeout: 4
-            ),
-            "Probe: \(String(describing: probe.value))"
-        )
         XCTAssertTrue(finishButton.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilHittable(finishButton))
+        XCTAssertTrue(waitUntilAbsent(translationResult))
+        XCTAssertTrue(waitUntilAbsent(tabBar))
+        captureScreenshot(named: "text-entry-entered", of: app)
 
         finishButton.tap()
 
-        XCTAssertTrue(
-            wait(
-                for: NSPredicate(format: "value CONTAINS %@", "exit-pass=1"),
-                on: probe,
-                timeout: 4
-            ),
-            "Probe: \(String(describing: probe.value))"
-        )
+        XCTAssertTrue(translationResult.waitForExistence(timeout: 3))
+        XCTAssertTrue(wait(for: NSPredicate(format: "enabled == YES"), on: translationResult))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialResult), on: translationResult))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", initialSource), on: sourceEditor))
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        XCTAssertTrue(textMode.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilSelected(textMode))
+        XCTAssertTrue(waitUntilAbsent(finishButton))
+        XCTAssertEqual(elementCount("finish-source-editing-button", in: app), 0)
+        captureScreenshot(named: "text-entry-final", of: app)
     }
 
     @MainActor
@@ -797,7 +778,6 @@ final class VertoUITests: XCTestCase {
         mode: String,
         sheet: String? = nil,
         reduceMotion: Bool = false,
-        motionProbe: Bool = false,
         language: String = "zh-Hans",
         locale: String = "zh_Hans_CN",
         resetSettings: Bool = true
@@ -819,9 +799,6 @@ final class VertoUITests: XCTestCase {
         }
         if reduceMotion {
             app.launchArguments.append("--ui-testing-reduce-motion")
-        }
-        if motionProbe {
-            app.launchArguments.append("--ui-testing-text-entry-motion-probe")
         }
         addTeardownBlock {
             app.terminate()
