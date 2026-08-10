@@ -15,7 +15,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -62,7 +61,7 @@ struct SettingsView: View {
         .padding(.bottom, 4)
     }
 
-    // 手写 Row 自己负责内边距；inline Picker 要让 Form inset 同时约束标签和系统勾。
+    // Picker option 只负责纵向内容；Form inset 同时约束标签和系统勾，保持行尾对齐。
     private var engineSection: some View {
         Section {
             Picker("翻译模型", selection: $settings.translationEngine) {
@@ -90,7 +89,7 @@ struct SettingsView: View {
         Section {
             Picker("语音对话", selection: $settings.voicePlaybackMode) {
                 ForEach(VoicePlaybackMode.allCases) { mode in
-                    SelectableRow(
+                    optionLabel(
                         title: mode.displayName,
                         subtitle: mode.subtitle
                     )
@@ -130,28 +129,40 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section {
-            ForEach(AppearanceMode.allCases) { mode in
-                Button {
-                    select(mode)
-                } label: {
-                    SelectableRow(
+            Picker("外观", selection: $settings.appearanceMode) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    optionLabel(
                         title: mode.displayName,
-                        subtitle: mode.subtitle,
-                        isSelected: settings.appearanceMode == mode
+                        subtitle: mode.subtitle
                     )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("settings.appearance.\(mode.rawValue)")
+                    .tag(mode)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(mode.displayName)，\(mode.subtitle)")
-                .accessibilityValue(settings.appearanceMode == mode ? "已选择" : "")
-                .accessibilityIdentifier("settings.appearance.\(mode.rawValue)")
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(AppTheme.card)
-                .listRowSeparatorTint(AppTheme.divider)
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            .tint(AppTheme.terracotta)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .listRowBackground(AppTheme.card)
+            .listRowSeparatorTint(AppTheme.divider)
         } header: {
             SectionLabel(text: "外观")
                 .textCase(nil)
         }
+    }
+
+    private func optionLabel(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(AppTheme.ink)
+            Text(subtitle)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(AppTheme.faint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14)
     }
 
     private var footer: some View {
@@ -162,11 +173,6 @@ struct SettingsView: View {
             .padding(.top, 22)
     }
 
-    private func select(_ mode: AppearanceMode) {
-        guard settings.appearanceMode != mode else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        settings.appearanceMode = mode
-    }
 }
 
 private struct EngineRow: View {
@@ -195,37 +201,6 @@ private struct EngineRow: View {
             }
         }
         .padding(.vertical, 14)
-    }
-}
-
-private struct SelectableRow: View {
-    let title: String
-    let subtitle: String
-    /// nil 时由原生 Picker 绘制选中标记；外观行在第 12 轮前仍传 Bool。
-    var isSelected: Bool? = nil
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(AppTheme.ink)
-                Text(subtitle)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(AppTheme.faint)
-            }
-
-            Spacer()
-
-            if isSelected == true {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(AppTheme.terracotta)
-            }
-        }
-        .padding(.horizontal, isSelected == nil ? 0 : 16)
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
     }
 }
 

@@ -636,6 +636,65 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
+    func testAppearancePickerSelectsEveryModeAndPersistsAcrossRelaunch() throws {
+        let app = launchApp(mode: "text", sheet: "settings")
+        let form = element("settings.form", in: app)
+        XCTAssertTrue(form.waitForExistence(timeout: 3))
+        form.swipeUp()
+
+        let systemAppearance = app.buttons["settings.appearance.system"].firstMatch
+        let lightAppearance = app.buttons["settings.appearance.light"].firstMatch
+        let darkAppearance = app.buttons["settings.appearance.dark"].firstMatch
+        XCTAssertTrue(systemAppearance.waitForExistence(timeout: 2))
+        XCTAssertTrue(lightAppearance.waitForExistence(timeout: 2))
+        XCTAssertTrue(darkAppearance.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilHittable(systemAppearance))
+        XCTAssertTrue(waitUntilHittable(lightAppearance))
+        XCTAssertTrue(waitUntilHittable(darkAppearance))
+        XCTAssertTrue(waitUntilSelected(systemAppearance))
+        XCTAssertTrue(waitUntilDeselected(lightAppearance))
+        XCTAssertTrue(waitUntilDeselected(darkAppearance))
+
+        lightAppearance.tap()
+        XCTAssertTrue(waitUntilDeselected(systemAppearance))
+        XCTAssertTrue(waitUntilSelected(lightAppearance))
+        XCTAssertTrue(waitUntilDeselected(darkAppearance))
+        captureScreenshot(named: "settings-appearance-light", of: app)
+
+        systemAppearance.tap()
+        XCTAssertTrue(waitUntilSelected(systemAppearance))
+        XCTAssertTrue(waitUntilDeselected(lightAppearance))
+        XCTAssertTrue(waitUntilDeselected(darkAppearance))
+
+        darkAppearance.tap()
+        XCTAssertTrue(waitUntilDeselected(systemAppearance))
+        XCTAssertTrue(waitUntilDeselected(lightAppearance))
+        XCTAssertTrue(waitUntilSelected(darkAppearance))
+        captureScreenshot(named: "settings-appearance-dark", of: app)
+
+        app.terminate()
+        let relaunchedApp = launchApp(
+            mode: "text",
+            sheet: "settings",
+            resetSettings: false
+        )
+        let relaunchedForm = element("settings.form", in: relaunchedApp)
+        XCTAssertTrue(relaunchedForm.waitForExistence(timeout: 3))
+        captureScreenshot(named: "settings-appearance-dark-relaunch", of: relaunchedApp)
+        relaunchedForm.swipeUp()
+
+        let relaunchedSystem = relaunchedApp.buttons["settings.appearance.system"].firstMatch
+        let relaunchedLight = relaunchedApp.buttons["settings.appearance.light"].firstMatch
+        let relaunchedDark = relaunchedApp.buttons["settings.appearance.dark"].firstMatch
+        XCTAssertTrue(relaunchedSystem.waitForExistence(timeout: 2))
+        XCTAssertTrue(relaunchedLight.waitForExistence(timeout: 2))
+        XCTAssertTrue(relaunchedDark.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilDeselected(relaunchedSystem))
+        XCTAssertTrue(waitUntilDeselected(relaunchedLight))
+        XCTAssertTrue(waitUntilSelected(relaunchedDark))
+    }
+
+    @MainActor
     func testCameraShutterShowsRecognizedMenuResults() throws {
         let app = launchApp(mode: "camera")
 
@@ -740,19 +799,21 @@ final class VertoUITests: XCTestCase {
         reduceMotion: Bool = false,
         motionProbe: Bool = false,
         language: String = "zh-Hans",
-        locale: String = "zh_Hans_CN"
+        locale: String = "zh_Hans_CN",
+        resetSettings: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
             "--uitest-mode", mode,
-            // 固定演示译文/脚本化语音并复位持久化偏好，
-            // UI 测试不碰真实网络、麦克风与 TTS，不受上次运行影响。
+            // 固定演示译文/脚本化语音，UI 测试不碰真实网络、麦克风与 TTS。
             "--uitest-canned-translation",
-            "--uitest-canned-speech",
-            "--uitest-reset-settings"
+            "--uitest-canned-speech"
         ]
+        if resetSettings {
+            app.launchArguments.append("--uitest-reset-settings")
+        }
         if let sheet {
             app.launchArguments.append(contentsOf: ["--uitest-sheet", sheet])
         }
