@@ -45,9 +45,6 @@ struct TextTranslateView: View {
     @State private var pendingFocusTask: Task<Void, Never>?
     @State private var transitionGeneration = 0
     @State private var transitionSignpostState: OSSignpostIntervalState?
-#if DEBUG
-    @State private var motionProbeTransitionID = 0
-#endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -128,9 +125,6 @@ struct TextTranslateView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .accessibilityIdentifier("translation-toast")
             }
-        }
-        .overlay(alignment: .topLeading) {
-            motionProbeAccessibilityView
         }
         .sheet(item: $presentedSheet, onDismiss: restoreDraftFocusIfNeeded) { destination in
             // sheet 是独立 presentation，不可靠继承根部的 preferredColorScheme，显式再套一层。
@@ -332,10 +326,11 @@ struct TextTranslateView: View {
     }
 
     private func sourceCardSurface(strokeOpacity: Double) -> some View {
-        TextEntrySurfaceShape(reportsMotionProbe: motionProbeIsEnabled)
+        let surface = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        return surface
             .fill(AppTheme.card)
             .overlay {
-                TextEntrySurfaceShape(reportsMotionProbe: false)
+                surface
                     .stroke(AppTheme.terracotta.opacity(strokeOpacity), lineWidth: 1.5)
             }
             .softShadow(radius: 8, y: 2, opacity: 0.045)
@@ -511,25 +506,6 @@ struct TextTranslateView: View {
 #endif
     }
 
-    private var motionProbeIsEnabled: Bool {
-#if DEBUG
-        ProcessInfo.processInfo.arguments.contains("--ui-testing-text-entry-motion-probe")
-#else
-        false
-#endif
-    }
-
-    @ViewBuilder
-    private var motionProbeAccessibilityView: some View {
-#if DEBUG
-        if motionProbeIsEnabled {
-            TextEntryMotionProbeAccessibilityView(reducesMotion: shouldReduceMotion)
-                .frame(width: 1, height: 1)
-                .allowsHitTesting(false)
-        }
-#endif
-    }
-
     private var sourceTextBinding: Binding<String> {
         Binding {
             activeSourceText
@@ -650,7 +626,6 @@ struct TextTranslateView: View {
         endTransitionSignpost(markStable: false)
         beginTransitionSignpost()
         TextEntryMotionTrace.signposter.emitEvent("TextEntryTapped")
-        beginMotionProbe(direction: .entering)
 
         let initialDraft = session.makeTextDraft()
 
@@ -676,7 +651,6 @@ struct TextTranslateView: View {
 
     private func handleEnterCompletion(generation: Int) {
         guard generation == transitionGeneration else { return }
-        completeMotionProbe(direction: .entering)
         endTransitionSignpost(markStable: true)
     }
 
@@ -691,7 +665,6 @@ struct TextTranslateView: View {
         let generation = transitionGeneration
         endTransitionSignpost(markStable: false)
         beginTransitionSignpost()
-        beginMotionProbe(direction: .exiting)
         // Dropping focus in the same frame as the collapse commit makes the
         // text view re-lay its content against the mid-commit geometry — the
         // text renders one frame displaced and gets dragged back by the
@@ -730,7 +703,6 @@ struct TextTranslateView: View {
 
     private func handleExitCompletion(generation: Int) {
         guard generation == transitionGeneration else { return }
-        completeMotionProbe(direction: .exiting)
         endTransitionSignpost(markStable: true)
     }
 
@@ -831,35 +803,6 @@ struct TextTranslateView: View {
     private func cancelPendingFocus() {
         pendingFocusTask?.cancel()
         pendingFocusTask = nil
-    }
-
-    private func beginMotionProbe(direction: TextEntryMotionDirection) {
-#if DEBUG
-        motionProbeTransitionID &+= 1
-        if motionProbeIsEnabled {
-            TextEntryMotionProbe.shared.begin(
-                id: motionProbeTransitionID,
-                direction: direction,
-                reducesMotion: shouldReduceMotion
-            )
-        }
-#endif
-    }
-
-    private func completeMotionProbe(direction: TextEntryMotionDirection) {
-#if DEBUG
-        guard motionProbeIsEnabled else { return }
-        let id = motionProbeTransitionID
-        Task { @MainActor in
-            // The keyboard notification retargets the card's height once,
-            // shortly after the transition starts, which can fire the original
-            // transaction's completion early. Give the retargeted spring time
-            // to settle before freezing the track's expected end point;
-            // geometry samples keep flowing until then.
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            TextEntryMotionProbe.shared.complete(id: id, direction: direction)
-        }
-#endif
     }
 
     private func beginTransitionSignpost() {
@@ -988,331 +931,12 @@ private struct TextEntryMotionProfile {
     }
 }
 
-/// The live source card's surface. Shapes re-resolve their path every frame
-/// of an animated resize (keeping the continuous corners undistorted), which
-/// also makes this the one place that observes the card's true frame-by-frame
-/// geometry — the DEBUG motion probe taps into that here.
-private struct TextEntrySurfaceShape: Shape {
-    let reportsMotionProbe: Bool
-
-    func path(in rect: CGRect) -> Path {
-#if DEBUG
-        if reportsMotionProbe {
-            TextEntryMotionProbe.shared.noteCardGeometry(
-                bottomY: rect.maxY,
-                isValid: rect.width > 1
-            )
-        }
-#endif
-        return RoundedRectangle(cornerRadius: 22, style: .continuous).path(in: rect)
-    }
-}
-
-private enum TextEntryMotionDirection: String {
-    case idle
-    case entering = "enter"
-    case exiting = "exit"
-}
-
 private enum TextEntryMotionTrace {
     static let signposter = OSSignposter(
         subsystem: Bundle.main.bundleIdentifier ?? "Verto",
         category: "TextEntryMotion"
     )
 }
-
-#if DEBUG
-private struct TextEntryMotionProbeAccessibilityView: UIViewRepresentable {
-    let reducesMotion: Bool
-
-    func makeUIView(context: Context) -> TextEntryMotionProbeAXView {
-        let view = TextEntryMotionProbeAXView()
-        view.isAccessibilityElement = true
-        view.accessibilityIdentifier = "text-entry-motion-probe"
-        view.accessibilityLabel = "文字键入动画探针"
-        view.backgroundColor = .clear
-        TextEntryMotionProbe.shared.setReducesMotion(reducesMotion)
-        TextEntryMotionProbeAXRegistry.shared.attach(view)
-        return view
-    }
-
-    func updateUIView(_ uiView: TextEntryMotionProbeAXView, context: Context) {
-        TextEntryMotionProbe.shared.setReducesMotion(reducesMotion)
-        TextEntryMotionProbeAXRegistry.shared.attach(uiView)
-    }
-
-    static func dismantleUIView(_ uiView: TextEntryMotionProbeAXView, coordinator: Void) {
-        TextEntryMotionProbeAXRegistry.shared.detach(uiView)
-    }
-}
-
-private final class TextEntryMotionProbeAXView: UIView {
-    override var accessibilityValue: String? {
-        get { TextEntryMotionProbe.shared.accessibilityValue }
-        set {}
-    }
-}
-
-@MainActor
-private final class TextEntryMotionProbeAXRegistry {
-    static let shared = TextEntryMotionProbeAXRegistry()
-    private weak var view: UIView?
-
-    func attach(_ view: UIView) {
-        self.view = view
-    }
-
-    func detach(_ view: UIView) {
-        if self.view === view {
-            self.view = nil
-        }
-    }
-
-    func postChange() {
-        guard view != nil else { return }
-        UIAccessibility.post(notification: .layoutChanged, argument: nil)
-    }
-}
-
-/// Records the live source card's animated bottom edge during entry/exit
-/// transitions. Samples come straight from the card's real geometry, so a
-/// passing track proves the on-screen layout actually moved through
-/// intermediate frames instead of snapping.
-private final class TextEntryMotionProbe: @unchecked Sendable {
-    static let shared = TextEntryMotionProbe()
-
-    private struct Sample {
-        let bottomY: CGFloat
-        let geometryIsValid: Bool
-    }
-
-    private struct Track {
-        var id = 0
-        var initialBottomY: CGFloat = 0
-        var expectedBottomY: CGFloat?
-        var samples: [Sample] = []
-        var isComplete = false
-
-        mutating func append(_ sample: Sample) {
-            guard !isComplete, samples.count < 240 else { return }
-            if let last = samples.last,
-               abs(last.bottomY - sample.bottomY) < 0.5 {
-                return
-            }
-            samples.append(sample)
-        }
-
-        func evaluation(for direction: TextEntryMotionDirection) -> Evaluation {
-            guard let expectedBottomY else {
-                return .empty
-            }
-
-            let validSamples = samples.filter {
-                $0.geometryIsValid && $0.bottomY.isFinite
-            }
-            let signedDistance = direction == .entering
-                ? expectedBottomY - initialBottomY
-                : initialBottomY - expectedBottomY
-            let distance = max(0, signedDistance)
-            guard distance >= 24 else {
-                return Evaluation(
-                    sawStart: false,
-                    sawMiddle: false,
-                    sawEnd: false,
-                    steps: 0,
-                    geometryIsValid: false,
-                    isMonotonic: false,
-                    distance: distance,
-                    passed: false
-                )
-            }
-
-            let normalizedPositions = validSamples.map { sample -> CGFloat in
-                let travelled = direction == .entering
-                    ? sample.bottomY - initialBottomY
-                    : initialBottomY - sample.bottomY
-                return min(1, max(0, travelled / distance))
-            }
-            let sawStart = normalizedPositions.contains { $0 <= 0.12 }
-            let sawMiddle = normalizedPositions.contains { $0 > 0.12 && $0 < 0.88 }
-            let sawEnd = normalizedPositions.contains { $0 >= 0.88 }
-            let steps = Set(normalizedPositions.map { Int(($0 * 20).rounded()) }).count
-            let regressionTolerance = max(3, distance * 0.04)
-            var extreme = initialBottomY
-            var isMonotonic = true
-            for sample in validSamples {
-                if direction == .entering {
-                    if sample.bottomY < extreme - regressionTolerance {
-                        isMonotonic = false
-                        break
-                    }
-                    extreme = max(extreme, sample.bottomY)
-                } else {
-                    if sample.bottomY > extreme + regressionTolerance {
-                        isMonotonic = false
-                        break
-                    }
-                    extreme = min(extreme, sample.bottomY)
-                }
-            }
-
-            return Evaluation(
-                sawStart: sawStart,
-                sawMiddle: sawMiddle,
-                sawEnd: sawEnd,
-                steps: steps,
-                geometryIsValid: !validSamples.isEmpty,
-                isMonotonic: isMonotonic,
-                distance: distance,
-                passed: isComplete
-                    && sawStart
-                    && sawMiddle
-                    && sawEnd
-                    && steps >= 3
-                    && isMonotonic
-            )
-        }
-    }
-
-    private struct Evaluation {
-        let sawStart: Bool
-        let sawMiddle: Bool
-        let sawEnd: Bool
-        let steps: Int
-        let geometryIsValid: Bool
-        let isMonotonic: Bool
-        let distance: CGFloat
-        let passed: Bool
-
-        static let empty = Evaluation(
-            sawStart: false,
-            sawMiddle: false,
-            sawEnd: false,
-            steps: 0,
-            geometryIsValid: false,
-            isMonotonic: false,
-            distance: 0,
-            passed: false
-        )
-    }
-
-    private let lock = NSLock()
-    private let enabled = ProcessInfo.processInfo.arguments.contains(
-        "--ui-testing-text-entry-motion-probe"
-    )
-    private var reducesMotion = false
-    private var lastBottomY: CGFloat?
-    private var activeDirection: TextEntryMotionDirection = .idle
-    private var activeID = 0
-    private var enterTrack = Track()
-    private var exitTrack = Track()
-
-    var accessibilityValue: String {
-        lock.lock()
-        defer { lock.unlock() }
-        let enter = enterTrack.evaluation(for: .entering)
-        let exit = exitTrack.evaluation(for: .exiting)
-        return [
-            "reduce=\(reducesMotion ? 1 : 0)",
-            summary(name: "enter", track: enterTrack, evaluation: enter),
-            summary(name: "exit", track: exitTrack, evaluation: exit)
-        ].joined(separator: ";")
-    }
-
-    func setReducesMotion(_ reducesMotion: Bool) {
-        guard enabled else { return }
-        lock.lock()
-        self.reducesMotion = reducesMotion
-        lock.unlock()
-    }
-
-    func noteCardGeometry(bottomY: CGFloat, isValid: Bool) {
-        guard enabled else { return }
-        lock.lock()
-        lastBottomY = bottomY
-        if activeDirection != .idle {
-            let sample = Sample(bottomY: bottomY, geometryIsValid: isValid)
-            switch activeDirection {
-            case .entering where enterTrack.id == activeID:
-                enterTrack.append(sample)
-            case .exiting where exitTrack.id == activeID:
-                exitTrack.append(sample)
-            default:
-                break
-            }
-        }
-        lock.unlock()
-    }
-
-    func begin(
-        id: Int,
-        direction: TextEntryMotionDirection,
-        reducesMotion: Bool
-    ) {
-        guard enabled, direction != .idle else { return }
-        lock.lock()
-        self.reducesMotion = reducesMotion
-        let initialBottomY = lastBottomY ?? 0
-        switch direction {
-        case .entering:
-            enterTrack = Track(id: id, initialBottomY: initialBottomY)
-        case .exiting:
-            exitTrack = Track(id: id, initialBottomY: initialBottomY)
-        case .idle:
-            break
-        }
-        activeDirection = direction
-        activeID = id
-        lock.unlock()
-        scheduleAccessibilityUpdate()
-    }
-
-    func complete(id: Int, direction: TextEntryMotionDirection) {
-        guard enabled, direction != .idle else { return }
-        lock.lock()
-        let expectedBottomY = lastBottomY
-        switch direction {
-        case .entering where enterTrack.id == id:
-            enterTrack.expectedBottomY = expectedBottomY
-            enterTrack.isComplete = true
-        case .exiting where exitTrack.id == id:
-            exitTrack.expectedBottomY = expectedBottomY
-            exitTrack.isComplete = true
-        default:
-            break
-        }
-        if activeID == id, activeDirection == direction {
-            activeDirection = .idle
-        }
-        lock.unlock()
-        scheduleAccessibilityUpdate()
-    }
-
-    private func summary(
-        name: String,
-        track: Track,
-        evaluation: Evaluation
-    ) -> String {
-        let state = track.id == 0 ? "idle" : (track.isComplete ? "complete" : "running")
-        return "\(name)-state=\(state)"
-            + ";\(name)-id=\(track.id)"
-            + ";\(name)-start=\(evaluation.sawStart ? 1 : 0)"
-            + ";\(name)-mid=\(evaluation.sawMiddle ? 1 : 0)"
-            + ";\(name)-end=\(evaluation.sawEnd ? 1 : 0)"
-            + ";\(name)-steps=\(evaluation.steps)"
-            + ";\(name)-geometry=\(evaluation.geometryIsValid ? 1 : 0)"
-            + ";\(name)-monotonic=\(evaluation.isMonotonic ? 1 : 0)"
-            + ";\(name)-delta=\(Int(evaluation.distance.rounded()))"
-            + ";\(name)-pass=\(evaluation.passed ? 1 : 0)"
-    }
-
-    private func scheduleAccessibilityUpdate() {
-        Task { @MainActor in
-            TextEntryMotionProbeAXRegistry.shared.postChange()
-        }
-    }
-}
-#endif
 
 private enum TextTranslateSheet: Identifiable {
     case alternatives

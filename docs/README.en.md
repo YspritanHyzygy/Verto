@@ -115,7 +115,7 @@ UI tests uniformly launch with `--uitest-canned-translation`, `--uitest-canned-s
 
 The UI is localized, and tests run pinned to Simplified Chinese: the shared scheme's Test action sets `zh-Hans` (covering the unit tests hosted in the app), and the UI tests additionally pass `-AppleLanguages` explicitly, so the Chinese copy assertions don't depend on the simulator language; `LocalizationTests` plus an English-UI smoke test cover resource completeness and real loading per language.
 
-Unit tests cover the conversation controller's state machine (throttling, generation-stale drops, endpoint timing, the TTS gating matrix, failure retry, cache hits, and more), the translation-routing fallback chain, playback-mode persistence, and locale mapping. The animation-visibility regression compares no fragile millisecond screenshots; instead a DEBUG probe on the actual `TextEntryPaperShape.path(in:)` drawing path verifies that expansion and collapse each pass through the start, at least one intermediate value, and the end; all other flows assert stable end states only.
+Unit tests cover the conversation controller's state machine (throttling, generation-stale drops, endpoint timing, the TTS gating matrix, failure retry, cache hits, and more), the translation-routing fallback chain, playback-mode persistence, and locale mapping. Automated tests for the text-entry transition verify entering edit mode, exiting it, and the stable final state only; visibility, jumps, and ghosting are accepted by reviewing a real iPhone Simulator screen recording.
 
 Run on any installed iPhone Simulator, for example:
 
