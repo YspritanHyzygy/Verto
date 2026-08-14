@@ -500,7 +500,7 @@ struct TextTranslateView: View {
     private var shouldReduceMotion: Bool {
 #if DEBUG
         accessibilityReduceMotion
-            || ProcessInfo.processInfo.arguments.contains("--ui-testing-reduce-motion")
+            || ProcessInfo.processInfo.arguments.contains("--uitest-reduce-motion")
 #else
         accessibilityReduceMotion
 #endif

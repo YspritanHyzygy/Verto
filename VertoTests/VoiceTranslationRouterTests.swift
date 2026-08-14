@@ -40,15 +40,13 @@ private final class RecordingFallback: TranslationService, @unchecked Sendable {
     private var _requests: [TranslationRequest] = []
 
     var requests: [TranslationRequest] {
-        lock.lock()
-        defer { lock.unlock() }
-        return _requests
+        lock.withLock { _requests }
     }
 
     func translate(_ request: TranslationRequest) async throws -> TranslationResult {
-        lock.lock()
-        _requests.append(request)
-        lock.unlock()
+        // withLock, not lock()/unlock(): the latter is unavailable from async
+        // contexts under Swift 6 (holding a lock across a suspension point).
+        lock.withLock { _requests.append(request) }
         return TranslationResult(text: "回退:\(request.text)", detectedLanguage: nil, alternatives: [])
     }
 }

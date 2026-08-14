@@ -235,6 +235,14 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(wait(for: NSPredicate(format: "value != %@", initialResult), on: translationResult))
         let updatedResult = try XCTUnwrap(translationResult.value as? String)
         XCTAssertFalse(updatedResult.isEmpty)
+        // 目标语言已切到日语，所以断言译文"确实是日语"，而不是断言某句固定译文
+        // （钉字面值就是把假数据当规格）。只查"变了且非空"时，路由忽略目标语言、
+        // 把英文原样回填也会通过。用假名区间而不是 NLLanguageRecognizer：实测后者
+        // 对「Good morning!」の自然な翻訳 这类内嵌英文的短句判成 en。
+        XCTAssertNotNil(
+            updatedResult.rangeOfCharacter(from: .japaneseKana),
+            "目标语言为日语时译文应含假名，实际为：\(updatedResult)"
+        )
         XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
 
         XCTAssertTrue(textMode.waitForExistence(timeout: 2))
@@ -261,6 +269,11 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(secondAlternative.waitForExistence(timeout: 3))
         XCTAssertTrue(waitUntilHittable(secondAlternative))
         captureScreenshot(named: "alternative-translations-list", of: app)
+        // 先记下这一行当时显示的文案，待会儿拿它当预期值：契约是"选了哪条译法，
+        // 结果就变成哪条"，只断言"变了"的话，换成任意另一条译法也会通过。
+        // 行 label 是序号加译文的组合，所以比对方向是 label 包含新结果。
+        let chosenRowLabel = secondAlternative.label
+        XCTAssertFalse(chosenRowLabel.isEmpty)
         secondAlternative.tap()
 
         XCTAssertTrue(waitUntilAbsent(secondAlternative))
@@ -268,6 +281,12 @@ final class VertoUITests: XCTestCase {
             for: NSPredicate(format: "value != %@", initialResult),
             on: translationResult
         ))
+        let updatedResult = try XCTUnwrap(translationResult.value as? String)
+        XCTAssertFalse(updatedResult.isEmpty)
+        XCTAssertTrue(
+            chosenRowLabel.contains(updatedResult),
+            "结果应为所选译法，所选行为「\(chosenRowLabel)」，实际结果为「\(updatedResult)」"
+        )
     }
 
     @MainActor
@@ -798,7 +817,7 @@ final class VertoUITests: XCTestCase {
             app.launchArguments.append(contentsOf: ["--uitest-sheet", sheet])
         }
         if reduceMotion {
-            app.launchArguments.append("--ui-testing-reduce-motion")
+            app.launchArguments.append("--uitest-reduce-motion")
         }
         addTeardownBlock {
             app.terminate()
@@ -888,4 +907,10 @@ final class VertoUITests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: object)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
+}
+
+private extension CharacterSet {
+    /// 平假名 + 片假名两个 Unicode 区块。断言"译文属于哪种语言"时用它，
+    /// 这样不必把某句罐头译文钉成规格，换成真实翻译服务后断言依然成立。
+    static let japaneseKana = CharacterSet(charactersIn: "\u{3040}"..."\u{30FF}")
 }
