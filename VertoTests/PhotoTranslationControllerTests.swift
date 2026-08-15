@@ -25,17 +25,25 @@ private final class StubCaptureSource: PhotoCaptureSource {
     var isFlashAvailable = true
     var isPermissionDenied = false
     let previewLayer: AVCaptureVideoPreviewLayer? = nil
+    var isAdjustingFocus = false
+    var isAdjustingExposure = false
+    var focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+    var displayZoomFactor: CGFloat = 1
+    var minimumDisplayZoomFactor: CGFloat = 0.5
+    var maximumDisplayZoomFactor: CGFloat = 5
 
     var captureError: Error?
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var flashEnabled: Bool?
-    private(set) var exposureLocked: Bool?
+    private(set) var requestedFocusPoint: CGPoint?
+    private(set) var requestedZoomFactor: CGFloat?
 
     func start() async { startCount += 1 }
     func stop() { stopCount += 1 }
     func setFlashEnabled(_ enabled: Bool) { flashEnabled = enabled }
-    func setExposureLocked(_ locked: Bool) { exposureLocked = locked }
+    func focusAndMeter(at devicePoint: CGPoint) { requestedFocusPoint = devicePoint }
+    func setDisplayZoomFactor(_ factor: CGFloat) { requestedZoomFactor = factor }
 
     func capturePhoto() async throws -> UIImage {
         if let captureError { throw captureError }
@@ -327,15 +335,18 @@ final class PhotoTranslationControllerTests: XCTestCase {
 
     // MARK: - 硬件状态透传
 
-    func testFlashAndExposureTogglesReachTheCaptureSource() async {
+    func testFlashFocusAndZoomReachTheCaptureSource() async {
         let capture = StubCaptureSource()
         let controller = makeController(recognizer: StubRecognizer(blocks: []), capture: capture)
+        let focusPoint = CGPoint(x: 0.25, y: 0.75)
 
         controller.isFlashOn = true
-        controller.isExposureLocked = true
+        controller.focusAndMeter(at: focusPoint)
+        controller.setDisplayZoomFactor(4.2)
 
         XCTAssertEqual(capture.flashEnabled, true)
-        XCTAssertEqual(capture.exposureLocked, true)
+        XCTAssertEqual(capture.requestedFocusPoint, focusPoint)
+        XCTAssertEqual(capture.requestedZoomFactor, 4.2)
     }
 
     func testStartReportsPermissionDenialUpFront() async {

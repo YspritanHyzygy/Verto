@@ -76,11 +76,20 @@ final class CannedPhotoCaptureSource: PhotoCaptureSource {
     let isPermissionDenied = false
     /// 无真实取景层；相机页据此显示中性背景，快门照常可用。
     let previewLayer: AVCaptureVideoPreviewLayer? = nil
+    let isAdjustingFocus = false
+    let isAdjustingExposure = false
+    private(set) var focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+    private(set) var displayZoomFactor: CGFloat = 1
+    let minimumDisplayZoomFactor: CGFloat = 1
+    let maximumDisplayZoomFactor: CGFloat = 5
 
     func start() async {}
     func stop() {}
     func setFlashEnabled(_ enabled: Bool) {}
-    func setExposureLocked(_ locked: Bool) {}
+    func focusAndMeter(at devicePoint: CGPoint) { focusPointOfInterest = devicePoint }
+    func setDisplayZoomFactor(_ factor: CGFloat) {
+        displayZoomFactor = min(max(factor, minimumDisplayZoomFactor), maximumDisplayZoomFactor)
+    }
 
     func capturePhoto() async throws -> UIImage {
         CannedSignFixture.renderImage()

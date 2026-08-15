@@ -30,12 +30,16 @@ struct CameraTranslateView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedBlock: BlockSelection?
     @State private var toastText: String?
+    @State private var zoomAtGestureStart: CGFloat?
 
     private var hasResultImage: Bool { controller.image != nil }
 
     var body: some View {
         ZStack {
             backdrop
+            if !hasResultImage, let previewLayer = controller.captureSource.previewLayer {
+                cameraInteractionLayer(previewLayer: previewLayer)
+            }
             VStack(spacing: 0) {
                 topBar
                 // 出结果后状态条挂在顶栏下方，不留在屏幕中间——中间正好压着照片上的译文块。
@@ -137,27 +141,87 @@ struct CameraTranslateView: View {
             if hasResultImage {
                 glassCircleButton(
                     systemName: "xmark",
-                    isActive: false,
                     label: String(localized: "重拍"),
                     hint: String(localized: "轻点丢弃这张照片并回到取景"),
                     identifier: "camera.retakeButton",
                     action: controller.reset
                 )
-            } else {
-                glassCircleButton(
-                    systemName: controller.isExposureLocked ? "sun.max.fill" : "sun.max",
-                    isActive: controller.isExposureLocked,
-                    label: String(localized: "曝光锁定"),
-                    value: controller.isExposureLocked
-                        ? String(localized: "已锁定")
-                        : String(localized: "自动"),
-                    hint: String(localized: "轻点切换自动曝光和曝光锁定"),
-                    identifier: "camera.exposureButton",
-                    action: { controller.isExposureLocked.toggle() }
-                )
             }
         }
         .liquidGlassContainer()
+    }
+
+    // MARK: - 取景交互
+
+    private func cameraInteractionLayer(previewLayer: AVCaptureVideoPreviewLayer) -> some View {
+        GeometryReader { _ in
+            let source = controller.captureSource
+            let isAdjusting = source.isAdjustingFocus || source.isAdjustingExposure
+            let focusPoint = previewLayer.layerPointConverted(
+                fromCaptureDevicePoint: source.focusPointOfInterest
+            )
+
+            Color.clear
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    SpatialTapGesture().onEnded { value in
+                        let devicePoint = previewLayer.captureDevicePointConverted(
+                            fromLayerPoint: value.location
+                        )
+                        controller.focusAndMeter(at: devicePoint)
+                    }
+                )
+                .simultaneousGesture(
+                    MagnifyGesture()
+                        .onChanged { value in
+                            if zoomAtGestureStart == nil {
+                                zoomAtGestureStart = source.displayZoomFactor
+                            }
+                            guard let zoomAtGestureStart else { return }
+                            controller.setDisplayZoomFactor(zoomAtGestureStart * value.magnification)
+                        }
+                        .onEnded { _ in zoomAtGestureStart = nil }
+                )
+                .overlay {
+                    if isAdjusting {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.white, lineWidth: 2)
+                            .frame(width: 72, height: 72)
+                            .position(focusPoint)
+                            .shadow(color: .black.opacity(0.42), radius: 2, y: 1)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .accessibilityElement()
+                .accessibilityLabel(String(localized: "相机取景"))
+                .accessibilityValue(zoomAccessibilityValue)
+                .accessibilityHint(String(localized: "上下轻扫调整变焦倍率"))
+                .accessibilityIdentifier("camera.viewfinder")
+                .accessibilityAdjustableAction { direction in
+                    let step: CGFloat = 0.1
+                    switch direction {
+                    case .increment:
+                        controller.setDisplayZoomFactor(source.displayZoomFactor + step)
+                    case .decrement:
+                        controller.setDisplayZoomFactor(source.displayZoomFactor - step)
+                    @unknown default:
+                        break
+                    }
+                }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var zoomAccessibilityValue: String {
+        let factor = Double(controller.captureSource.displayZoomFactor).formatted(
+            .number.precision(.fractionLength(0...1))
+        )
+        return String(
+            format: String(localized: "当前变焦：%@ 倍"),
+            locale: .current,
+            factor
+        )
     }
 
     // MARK: - 状态区
@@ -332,9 +396,7 @@ struct CameraTranslateView: View {
 
     private func glassCircleButton(
         systemName: String,
-        isActive: Bool,
         label: String,
-        value: String? = nil,
         hint: String,
         identifier: String,
         action: @escaping () -> Void
@@ -342,18 +404,17 @@ struct CameraTranslateView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(isActive ? Color.yellow : Color.white)
+                .foregroundStyle(.white)
                 .frame(width: 42, height: 42)
                 .liquidGlass(in: Circle()) { content in
                     content
-                        .background(.black.opacity(isActive ? 0.42 : 0.28), in: Circle())
+                        .background(.black.opacity(0.28), in: Circle())
                         .background(.ultraThinMaterial, in: Circle())
                         .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
                 }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
-        .accessibilityValue(value ?? "")
         .accessibilityHint(hint)
         .accessibilityIdentifier(identifier)
     }

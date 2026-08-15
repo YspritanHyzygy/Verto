@@ -64,13 +64,9 @@ final class PhotoTranslationController {
     private(set) var blocks: [TranslatedBlock] = []
     private(set) var phase: Phase = .idle
 
-    /// 闪光灯与曝光锁是界面状态，真伪由 captureSource 决定要不要真的作用到硬件。
+    /// 闪光灯是界面状态，真伪由 captureSource 决定要不要真的作用到硬件。
     var isFlashOn = false {
         didSet { captureSource.setFlashEnabled(isFlashOn) }
-    }
-
-    var isExposureLocked = false {
-        didSet { captureSource.setExposureLocked(isExposureLocked) }
     }
 
     let captureSource: any PhotoCaptureSource
@@ -171,6 +167,16 @@ final class PhotoTranslationController {
     }
 
     // MARK: - 用户操作
+
+    func focusAndMeter(at devicePoint: CGPoint) {
+        guard image == nil else { return }
+        captureSource.focusAndMeter(at: devicePoint)
+    }
+
+    func setDisplayZoomFactor(_ factor: CGFloat) {
+        guard image == nil else { return }
+        captureSource.setDisplayZoomFactor(factor)
+    }
 
     func capture() {
         guard !isBusy else { return }

@@ -2058,41 +2058,6 @@
         }
       }
     },
-    "已锁定" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Locked"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bloqueada"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ロック中"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "잠김"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已锁定"
-          }
-        }
-      }
-    },
     "开始听写" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2229,6 +2194,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前设备暂不支持识别这种语言"
+          }
+        }
+      }
+    },
+    "当前变焦：%@ 倍" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current zoom: %@×"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom actual: %@×"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のズーム：%@倍"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현재 확대: %@배"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前变焦：%@ 倍"
           }
         }
       }
@@ -2824,41 +2824,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "暂无收藏"
-          }
-        }
-      }
-    },
-    "曝光锁定" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exposure lock"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bloqueo de exposición"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "露出ロック"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "노출 잠금"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曝光锁定"
           }
         }
       }
@@ -4088,6 +4053,41 @@
         }
       }
     },
+    "相机取景" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera viewfinder"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visor de la cámara"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラのファインダー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카메라 뷰파인더"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相机取景"
+          }
+        }
+      }
+    },
     "端侧离线 · 更快更私密" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4574,41 +4574,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "翻译自"
-          }
-        }
-      }
-    },
-    "自动" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Automática"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自動"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자동"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动"
           }
         }
       }
@@ -5523,37 +5488,37 @@
         }
       }
     },
-    "轻点切换自动曝光和曝光锁定" : {
+    "上下轻扫调整变焦倍率" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap to switch between auto exposure and exposure lock"
+            "value" : "Swipe up or down to adjust zoom"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toca para alternar entre exposición automática y bloqueo"
+            "value" : "Desliza hacia arriba o abajo para ajustar el zoom"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タップして自動露出と露出ロックを切り替えます"
+            "value" : "上下にスワイプしてズームを調整"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "탭하여 자동 노출과 노출 잠금을 전환합니다"
+            "value" : "위아래로 쓸어 확대를 조절합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点切换自动曝光和曝光锁定"
+            "value" : "上下轻扫调整变焦倍率"
           }
         }
       }

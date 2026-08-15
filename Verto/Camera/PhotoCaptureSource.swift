@@ -44,12 +44,22 @@ protocol PhotoCaptureSource: AnyObject {
     var isPermissionDenied: Bool { get }
     /// 取景预览层；无取景能力的实现返回 nil。
     var previewLayer: AVCaptureVideoPreviewLayer? { get }
+    /// 设备正在实际调整对焦/曝光。取景框只跟随这两个原始硬件状态，不靠计时器猜。
+    var isAdjustingFocus: Bool { get }
+    var isAdjustingExposure: Bool { get }
+    /// AVCaptureDevice 坐标（左上为 0,0），供取景层把真实对焦点画回屏幕。
+    var focusPointOfInterest: CGPoint { get }
+    /// 与系统相机界面一致的展示倍率；iOS 18 起由设备提供换算系数。
+    var displayZoomFactor: CGFloat { get }
+    var minimumDisplayZoomFactor: CGFloat { get }
+    var maximumDisplayZoomFactor: CGFloat { get }
 
     /// 请求权限并启动会话。可重复调用，已在运行时是空操作。
     func start() async
     func stop()
     func setFlashEnabled(_ enabled: Bool)
-    func setExposureLocked(_ locked: Bool)
+    func focusAndMeter(at devicePoint: CGPoint)
+    func setDisplayZoomFactor(_ factor: CGFloat)
     func capturePhoto() async throws -> UIImage
 }
 
@@ -60,6 +70,12 @@ final class CameraCaptureSource: PhotoCaptureSource {
     private(set) var isFlashAvailable = false
     private(set) var isPermissionDenied = false
     private(set) var previewLayer: AVCaptureVideoPreviewLayer?
+    private(set) var isAdjustingFocus = false
+    private(set) var isAdjustingExposure = false
+    private(set) var focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+    private(set) var displayZoomFactor: CGFloat = 1
+    private(set) var minimumDisplayZoomFactor: CGFloat = 1
+    private(set) var maximumDisplayZoomFactor: CGFloat = 1
 
     @ObservationIgnored private let engine = CaptureEngine()
     @ObservationIgnored private var flashEnabled = false
@@ -85,13 +101,20 @@ final class CameraCaptureSource: PhotoCaptureSource {
         }
         isPermissionDenied = false
 
+        engine.setStateHandler { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.apply(state)
+            }
+        }
         let readiness = await engine.prepare()
         guard readiness.isReady else {
             markUnavailable(permissionDenied: false)
             return
         }
+        if let state = readiness.state {
+            apply(state)
+        }
         canCapture = true
-        isFlashAvailable = readiness.hasFlash
         if previewLayer == nil {
             // 预览层只是个 CALayer，建在主线程上很轻；重活（设备发现、
             // addInput/commitConfiguration、startRunning）都在 engine 的队列上。
@@ -115,8 +138,14 @@ final class CameraCaptureSource: PhotoCaptureSource {
         flashEnabled = enabled
     }
 
-    func setExposureLocked(_ locked: Bool) {
-        engine.setExposureLocked(locked)
+    func focusAndMeter(at devicePoint: CGPoint) {
+        engine.focusAndMeter(at: devicePoint)
+    }
+
+    func setDisplayZoomFactor(_ factor: CGFloat) {
+        let clamped = min(max(factor, minimumDisplayZoomFactor), maximumDisplayZoomFactor)
+        displayZoomFactor = clamped
+        engine.setDisplayZoomFactor(clamped)
     }
 
     func capturePhoto() async throws -> UIImage {
@@ -135,8 +164,8 @@ final class CameraCaptureSource: PhotoCaptureSource {
                 continuation.resume(with: result)
             }
             pendingCaptures[token] = delegate
-            // capturePhoto 只是入队，不阻塞；重活在 engine 队列上由系统自己调度。
-            engine.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            // 与变焦配置走同一串行队列，确保快门排在最后一次捏合倍率之后。
+            engine.capturePhoto(with: settings, delegate: delegate)
         }
     }
 
@@ -145,17 +174,37 @@ final class CameraCaptureSource: PhotoCaptureSource {
         isFlashAvailable = false
         isPermissionDenied = permissionDenied
     }
+
+    private func apply(_ state: CaptureEngine.CameraState) {
+        isFlashAvailable = state.hasFlash
+        isAdjustingFocus = state.isAdjustingFocus
+        isAdjustingExposure = state.isAdjustingExposure
+        focusPointOfInterest = state.focusPointOfInterest
+        displayZoomFactor = state.displayZoomFactor
+        minimumDisplayZoomFactor = state.minimumDisplayZoomFactor
+        maximumDisplayZoomFactor = state.maximumDisplayZoomFactor
+    }
 }
 
 /// 会话本体。`AVCaptureSession` 不是 Sendable，但配置与启停全部压在这一条串行队列上，
 /// 由 `@unchecked Sendable` 把这个不变量写成类型约束——同 `MicrophoneAudioSource` 的做法。
 ///
-/// `session` 与 `photoOutput` 对外只读暴露给两处主线程操作：绑定预览层、入队一次拍照。
-/// 两者都是不阻塞的引用传递，不参与队列上的配置事务。
+/// `session` 对外只读用于绑定预览层；`photoOutput` 对外只读取闪光能力。
+/// 拍照请求本身仍回到这条队列，排在最后一次变焦配置之后。
 private final class CaptureEngine: @unchecked Sendable {
+    struct CameraState: Sendable {
+        let hasFlash: Bool
+        let isAdjustingFocus: Bool
+        let isAdjustingExposure: Bool
+        let focusPointOfInterest: CGPoint
+        let displayZoomFactor: CGFloat
+        let minimumDisplayZoomFactor: CGFloat
+        let maximumDisplayZoomFactor: CGFloat
+    }
+
     struct Readiness: Sendable {
         let isReady: Bool
-        let hasFlash: Bool
+        let state: CameraState?
     }
 
     let session = AVCaptureSession()
@@ -165,6 +214,24 @@ private final class CaptureEngine: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.yspritan.verto.camera.session")
     private var device: AVCaptureDevice?
     private var isConfigured = false
+    private var stateHandler: (@Sendable (CameraState) -> Void)?
+    private var focusObservation: NSKeyValueObservation?
+    private var exposureObservation: NSKeyValueObservation?
+    private var focusPointObservation: NSKeyValueObservation?
+    private var subjectAreaObserver: NSObjectProtocol?
+
+    deinit {
+        if let subjectAreaObserver {
+            NotificationCenter.default.removeObserver(subjectAreaObserver)
+        }
+    }
+
+    func setStateHandler(_ handler: @escaping @Sendable (CameraState) -> Void) {
+        queue.async {
+            self.stateHandler = handler
+            self.reportState()
+        }
+    }
 
     func prepare() async -> Readiness {
         await withCheckedContinuation { continuation in
@@ -188,29 +255,60 @@ private final class CaptureEngine: @unchecked Sendable {
         }
     }
 
-    func setExposureLocked(_ locked: Bool) {
+    func capturePhoto(
+        with settings: AVCapturePhotoSettings,
+        delegate: AVCapturePhotoCaptureDelegate
+    ) {
+        queue.async {
+            // capturePhoto 只是向系统入队，不会把会话队列堵在照片处理上。
+            self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+        }
+    }
+
+    func focusAndMeter(at devicePoint: CGPoint) {
         queue.async {
             guard let device = self.device else { return }
-            let mode: AVCaptureDevice.ExposureMode = locked ? .locked : .continuousAutoExposure
-            guard device.isExposureModeSupported(mode),
-                  (try? device.lockForConfiguration()) != nil else {
-                return
-            }
-            device.exposureMode = mode
+            self.configureContinuousAuto(
+                on: device,
+                at: CGPoint(
+                    x: min(max(devicePoint.x, 0), 1),
+                    y: min(max(devicePoint.y, 0), 1)
+                )
+            )
+            self.reportState()
+        }
+    }
+
+    func setDisplayZoomFactor(_ factor: CGFloat) {
+        queue.async {
+            guard let device = self.device,
+                  (try? device.lockForConfiguration()) != nil else { return }
+            let multiplier = self.displayZoomMultiplier(for: device)
+            let requestedDeviceFactor = factor / multiplier
+            device.videoZoomFactor = min(
+                max(requestedDeviceFactor, device.minAvailableVideoZoomFactor),
+                device.maxAvailableVideoZoomFactor
+            )
             device.unlockForConfiguration()
+            self.reportState()
         }
     }
 
     private func configureIfNeeded() -> Readiness {
         if isConfigured {
-            return Readiness(isReady: true, hasFlash: device?.hasFlash ?? false)
+            guard let device else { return Readiness(isReady: false, state: nil) }
+            // 页面重进或 App 回前台时，不能沿用系统中断前可能残留的锁定/单次模式。
+            configureContinuousAuto(on: device, at: CGPoint(x: 0.5, y: 0.5))
+            let state = makeState(for: device)
+            stateHandler?(state)
+            return Readiness(isReady: true, state: state)
         }
         // 模拟器没有摄像头，这里就是 nil——不可用性是运行时判定，不是 #if targetEnvironment。
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+        guard let device = Self.preferredBackCamera(),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input),
               session.canAddOutput(photoOutput) else {
-            return Readiness(isReady: false, hasFlash: false)
+            return Readiness(isReady: false, state: nil)
         }
 
         session.beginConfiguration()
@@ -226,7 +324,125 @@ private final class CaptureEngine: @unchecked Sendable {
 
         self.device = device
         isConfigured = true
-        return Readiness(isReady: true, hasFlash: device.hasFlash)
+        installDeviceObservers(for: device)
+        configureContinuousAuto(
+            on: device,
+            at: CGPoint(x: 0.5, y: 0.5),
+            resetToOneTimesZoom: true
+        )
+        let state = makeState(for: device)
+        stateHandler?(state)
+        return Readiness(isReady: true, state: state)
+    }
+
+    /// 虚拟设备由系统在各实体镜头间切换；只有设备没有对应组合时才退回单广角。
+    private static func preferredBackCamera() -> AVCaptureDevice? {
+        let preferredTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInTripleCamera,
+            .builtInDualWideCamera,
+            .builtInDualCamera,
+            .builtInWideAngleCamera,
+        ]
+        return preferredTypes.lazy.compactMap {
+            AVCaptureDevice.default($0, for: .video, position: .back)
+        }.first
+    }
+
+    private func configureContinuousAuto(
+        on device: AVCaptureDevice,
+        at point: CGPoint,
+        resetToOneTimesZoom: Bool = false
+    ) {
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        defer { device.unlockForConfiguration() }
+
+        if device.primaryConstituentDeviceSwitchingBehavior != .unsupported {
+            // `.auto` 才允许系统按焦距、光线与最近对焦距离选择更合适的实体镜头。
+            device.setPrimaryConstituentDeviceSwitchingBehavior(
+                .auto,
+                restrictedSwitchingBehaviorConditions: []
+            )
+        }
+        if resetToOneTimesZoom {
+            // 虚拟三摄的设备 1.0 可能是界面 0.5×；首次打开要延续原单广角的 1× 构图。
+            let oneTimesDeviceFactor = 1 / displayZoomMultiplier(for: device)
+            device.videoZoomFactor = min(
+                max(oneTimesDeviceFactor, device.minAvailableVideoZoomFactor),
+                device.maxAvailableVideoZoomFactor
+            )
+        }
+        if device.isFocusPointOfInterestSupported {
+            device.focusPointOfInterest = point
+        }
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            device.focusMode = .continuousAutoFocus
+        }
+        if device.isExposurePointOfInterestSupported {
+            device.exposurePointOfInterest = point
+        }
+        if device.isExposureModeSupported(.continuousAutoExposure) {
+            device.exposureMode = .continuousAutoExposure
+        }
+        device.isSubjectAreaChangeMonitoringEnabled = true
+    }
+
+    private func installDeviceObservers(for device: AVCaptureDevice) {
+        let report: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.queue.async { self.reportState() }
+        }
+        focusObservation = device.observe(\.isAdjustingFocus, options: [.initial, .new]) { _, _ in report() }
+        exposureObservation = device.observe(\.isAdjustingExposure, options: [.initial, .new]) { _, _ in report() }
+        focusPointObservation = device.observe(\.focusPointOfInterest, options: [.initial, .new]) { _, _ in report() }
+        subjectAreaObserver = NotificationCenter.default.addObserver(
+            forName: .AVCaptureDeviceSubjectAreaDidChange,
+            object: device,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                guard let device = self.device else { return }
+                // 主体显著变化后回到整幅画面中心继续追焦/测光，避免一次点按永久钉住旧区域。
+                self.configureContinuousAuto(on: device, at: CGPoint(x: 0.5, y: 0.5))
+                self.reportState()
+            }
+        }
+    }
+
+    private func reportState() {
+        guard let device else { return }
+        stateHandler?(makeState(for: device))
+    }
+
+    private func makeState(for device: AVCaptureDevice) -> CameraState {
+        let multiplier = displayZoomMultiplier(for: device)
+        let minimum = device.minAvailableVideoZoomFactor * multiplier
+        let deviceMaximum = device.maxAvailableVideoZoomFactor * multiplier
+        // 产品只承诺显示到 5×；低于 5× 的设备仍严格服从真实硬件上限。
+        let maximum = max(minimum, min(5, deviceMaximum))
+        return CameraState(
+            hasFlash: device.hasFlash,
+            isAdjustingFocus: device.isAdjustingFocus,
+            isAdjustingExposure: device.isAdjustingExposure,
+            focusPointOfInterest: device.focusPointOfInterest,
+            displayZoomFactor: min(max(device.videoZoomFactor * multiplier, minimum), maximum),
+            minimumDisplayZoomFactor: minimum,
+            maximumDisplayZoomFactor: maximum
+        )
+    }
+
+    private func displayZoomMultiplier(for device: AVCaptureDevice) -> CGFloat {
+        if #available(iOS 18.0, *) {
+            // 这是系统相机界面使用的展示换算；例如实体 1× 可显示为虚拟三摄的 0.5×。
+            return device.displayVideoZoomFactorMultiplier
+        }
+        if device.deviceType == .builtInTripleCamera || device.deviceType == .builtInDualWideCamera,
+           let wideSwitchFactor = device.virtualDeviceSwitchOverVideoZoomFactors.first?.doubleValue,
+           wideSwitchFactor > 0 {
+            // iOS 17 没有系统展示系数；含超广角的虚拟设备在首个切镜点才对应界面 1×。
+            return 1 / CGFloat(wideSwitchFactor)
+        }
+        return 1
     }
 }
 

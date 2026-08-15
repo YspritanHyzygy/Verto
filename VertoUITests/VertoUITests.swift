@@ -724,6 +724,7 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(gallery))
         XCTAssertTrue(waitUntilHittable(shutter))
         XCTAssertTrue(waitUntilHittable(flash))
+        XCTAssertEqual(elementCount("camera.exposureButton", in: app), 0)
 
         let tabBarFrame = app.tabBars.firstMatch.frame
         XCTAssertFalse(gallery.frame.intersects(tabBarFrame))
