@@ -33,6 +33,12 @@
 		01A000000000000000000306 /* AppleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000206 /* AppleTranslationService.swift */; };
 		01A000000000000000000307 /* SpeechSynthesizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000207 /* SpeechSynthesizing.swift */; };
 		01A000000000000000000308 /* VoiceConversationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000208 /* VoiceConversationController.swift */; };
+		01A000000000000000000501 /* TextRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000401 /* TextRecognition.swift */; };
+		01A000000000000000000502 /* VisionTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000402 /* VisionTextRecognitionService.swift */; };
+		01A000000000000000000503 /* PhotoCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000403 /* PhotoCaptureSource.swift */; };
+		01A000000000000000000504 /* CannedPhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000404 /* CannedPhotoCapture.swift */; };
+		01A000000000000000000505 /* PhotoTranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000405 /* PhotoTranslationController.swift */; };
+		01A000000000000000000506 /* TranslationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000406 /* TranslationOverlay.swift */; };
 		01B000000000000000000101 /* VertoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B000000000000000000001 /* VertoUITests.swift */; };
 		01C000000000000000000101 /* TranslationSessionDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000001 /* TranslationSessionDraftTests.swift */; };
 		01C000000000000000000102 /* GoogleTranslateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000002 /* GoogleTranslateServiceTests.swift */; };
@@ -42,6 +48,9 @@
 		01C000000000000000000106 /* LanguageSpeechLocaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000006 /* LanguageSpeechLocaleTests.swift */; };
 		01C000000000000000000107 /* SpeechAvailabilityProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000007 /* SpeechAvailabilityProbeTests.swift */; };
 		01C000000000000000000108 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000008 /* LocalizationTests.swift */; };
+		01C000000000000000000109 /* PhotoTranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000009 /* PhotoTranslationControllerTests.swift */; };
+		01C000000000000000000110 /* TextBlockGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000010 /* TextBlockGeometryTests.swift */; };
+		01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +98,12 @@
 		01A000000000000000000206 /* AppleTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleTranslationService.swift; sourceTree = "<group>"; };
 		01A000000000000000000207 /* SpeechSynthesizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSynthesizing.swift; sourceTree = "<group>"; };
 		01A000000000000000000208 /* VoiceConversationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceConversationController.swift; sourceTree = "<group>"; };
+		01A000000000000000000401 /* TextRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRecognition.swift; sourceTree = "<group>"; };
+		01A000000000000000000402 /* VisionTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionTextRecognitionService.swift; sourceTree = "<group>"; };
+		01A000000000000000000403 /* PhotoCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureSource.swift; sourceTree = "<group>"; };
+		01A000000000000000000404 /* CannedPhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CannedPhotoCapture.swift; sourceTree = "<group>"; };
+		01A000000000000000000405 /* PhotoTranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTranslationController.swift; sourceTree = "<group>"; };
+		01A000000000000000000406 /* TranslationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationOverlay.swift; sourceTree = "<group>"; };
 		01B000000000000000000001 /* VertoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VertoUITests.swift; sourceTree = "<group>"; };
 		01B000000000000000000011 /* VertoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		01C000000000000000000001 /* TranslationSessionDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSessionDraftTests.swift; sourceTree = "<group>"; };
@@ -99,6 +114,9 @@
 		01C000000000000000000006 /* LanguageSpeechLocaleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageSpeechLocaleTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000007 /* SpeechAvailabilityProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAvailabilityProbeTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000008 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000009 /* PhotoTranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTranslationControllerTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000010 /* TextBlockGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextBlockGeometryTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionAvailabilityProbeTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000011 /* VertoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -154,6 +172,7 @@
 				01A000000000000000000019 /* InfoPlist.xcstrings */,
 				01A000000000000000000033 /* Screens */,
 				01A000000000000000000034 /* Voice */,
+				01A000000000000000000035 /* Camera */,
 			);
 			path = Verto;
 			sourceTree = "<group>";
@@ -196,6 +215,19 @@
 			path = Voice;
 			sourceTree = "<group>";
 		};
+		01A000000000000000000035 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+				01A000000000000000000401 /* TextRecognition.swift */,
+				01A000000000000000000405 /* PhotoTranslationController.swift */,
+				01A000000000000000000402 /* VisionTextRecognitionService.swift */,
+				01A000000000000000000403 /* PhotoCaptureSource.swift */,
+				01A000000000000000000404 /* CannedPhotoCapture.swift */,
+				01A000000000000000000406 /* TranslationOverlay.swift */,
+			);
+			path = Camera;
+			sourceTree = "<group>";
+		};
 		01B000000000000000000031 /* VertoUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -215,6 +247,9 @@
 				01C000000000000000000006 /* LanguageSpeechLocaleTests.swift */,
 				01C000000000000000000007 /* SpeechAvailabilityProbeTests.swift */,
 				01C000000000000000000008 /* LocalizationTests.swift */,
+				01C000000000000000000009 /* PhotoTranslationControllerTests.swift */,
+				01C000000000000000000010 /* TextBlockGeometryTests.swift */,
+				01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */,
 			);
 			path = VertoTests;
 			sourceTree = "<group>";
@@ -377,6 +412,12 @@
 				01A000000000000000000306 /* AppleTranslationService.swift in Sources */,
 				01A000000000000000000307 /* SpeechSynthesizing.swift in Sources */,
 				01A000000000000000000308 /* VoiceConversationController.swift in Sources */,
+				01A000000000000000000501 /* TextRecognition.swift in Sources */,
+				01A000000000000000000502 /* VisionTextRecognitionService.swift in Sources */,
+				01A000000000000000000503 /* PhotoCaptureSource.swift in Sources */,
+				01A000000000000000000504 /* CannedPhotoCapture.swift in Sources */,
+				01A000000000000000000505 /* PhotoTranslationController.swift in Sources */,
+				01A000000000000000000506 /* TranslationOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -400,6 +441,9 @@
 				01C000000000000000000106 /* LanguageSpeechLocaleTests.swift in Sources */,
 				01C000000000000000000107 /* SpeechAvailabilityProbeTests.swift in Sources */,
 				01C000000000000000000108 /* LocalizationTests.swift in Sources */,
+				01C000000000000000000109 /* PhotoTranslationControllerTests.swift in Sources */,
+				01C000000000000000000110 /* TextBlockGeometryTests.swift in Sources */,
+				01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -549,6 +593,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译境";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "对话翻译需要使用麦克风录制你的语音，用于实时语音识别与翻译。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要语音识别权限把你的语音转成文字后翻译；iOS 26 及以上识别在你的设备上完成。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -585,6 +630,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译境";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "对话翻译需要使用麦克风录制你的语音，用于实时语音识别与翻译。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要语音识别权限把你的语音转成文字后翻译；iOS 26 及以上识别在你的设备上完成。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

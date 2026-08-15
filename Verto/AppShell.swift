@@ -22,14 +22,15 @@ struct AppShell: View {
     @State private var settings: AppSettings
     @State private var session: TranslationSession
     @State private var voiceController: VoiceConversationController
+    @State private var photoController: PhotoTranslationController
     @State private var appleTranslationProvider: AppleTranslationProvider
     @State private var sheetDestination: SheetDestination?
-    private let usesCannedTranslation: Bool
+    private let usesDemoData: Bool
 
     init() {
         let configuration = UITestLaunchConfiguration.current
         let settings = AppSettings()
-        usesCannedTranslation = configuration.useCannedTranslation
+        usesDemoData = configuration.useCannedTranslation || configuration.useCannedCamera
         _selectedMode = State(initialValue: configuration.mode)
         _sheetDestination = State(initialValue: configuration.sheet)
         _settings = State(initialValue: settings)
@@ -66,6 +67,30 @@ struct AppShell: View {
             synthesizer: voiceSynthesizer,
             timing: voiceTiming
         ))
+
+        let captureSource: any PhotoCaptureSource
+        let recognizer: any TextRecognitionService
+#if DEBUG
+        if configuration.useCannedCamera {
+            // 模拟器无摄像头、UI 测试也开不了系统相册选择器：整条采集+识别链走合成实现，
+            // 快门 → 叠加译文的全流程因此能在模拟器上真跑。
+            captureSource = CannedPhotoCaptureSource()
+            recognizer = CannedTextRecognitionService()
+        } else {
+            captureSource = CameraCaptureSource()
+            recognizer = VisionTextRecognitionService()
+        }
+#else
+        captureSource = CameraCaptureSource()
+        recognizer = VisionTextRecognitionService()
+#endif
+        _photoController = State(initialValue: PhotoTranslationController(
+            settings: settings,
+            captureSource: captureSource,
+            recognizer: recognizer,
+            translationService: configuration.useCannedTranslation ? CannedTranslationService() : nil,
+            synthesizer: voiceSynthesizer
+        ))
     }
 
     var body: some View {
@@ -98,8 +123,9 @@ struct AppShell: View {
             .tag(AppMode.voice)
 
             CameraTranslateView(
-                sourceLanguage: session.sourceLanguage,
-                targetLanguage: session.targetLanguage,
+                controller: photoController,
+                session: session,
+                settings: settings,
                 onPickLanguage: { sheetDestination = .language(.target) }
             )
             .tabItem {
@@ -135,9 +161,9 @@ struct AppShell: View {
             settings.lastTargetLanguageCode = newValue.code
         }
 #if DEBUG
-        // UI 测试的固定演示译文模式必须一眼可辨，避免误当成真实翻译。
+        // UI 测试的固定演示数据必须一眼可辨，避免误当成真实翻译/真实识别。
         .overlay(alignment: .top) {
-            if usesCannedTranslation {
+            if usesDemoData {
                 Text("演示译文模式 · 未连接翻译服务")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
@@ -212,6 +238,7 @@ private struct UITestLaunchConfiguration {
     let sheet: SheetDestination?
     let useCannedTranslation: Bool
     let useCannedSpeech: Bool
+    let useCannedCamera: Bool
 
     static var current: UITestLaunchConfiguration {
 #if DEBUG
@@ -231,14 +258,16 @@ private struct UITestLaunchConfiguration {
             mode: mode,
             sheet: sheet,
             useCannedTranslation: arguments.contains("--uitest-canned-translation"),
-            useCannedSpeech: arguments.contains("--uitest-canned-speech")
+            useCannedSpeech: arguments.contains("--uitest-canned-speech"),
+            useCannedCamera: arguments.contains("--uitest-canned-camera")
         )
 #else
         return UITestLaunchConfiguration(
             mode: .text,
             sheet: nil,
             useCannedTranslation: false,
-            useCannedSpeech: false
+            useCannedSpeech: false,
+            useCannedCamera: false
         )
 #endif
     }

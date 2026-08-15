@@ -14,30 +14,32 @@
 //  limitations under the License.
 //
 
-import SwiftUI
 import PhotosUI
+import SwiftUI
 import UIKit
 
 struct CameraTranslateView: View {
-    let sourceLanguage: Language
-    let targetLanguage: Language
+    @Bindable var controller: PhotoTranslationController
+    let session: TranslationSession
+    let settings: AppSettings
     let onPickLanguage: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPhoto: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
-    @State private var recognitionState: RecognitionState = .recognized
-    @State private var recognitionRequest = 0
-    @State private var isFlashOn = true
-    @State private var isExposureLocked = false
+    @State private var selectedBlock: BlockSelection?
+    @State private var toastText: String?
+
+    private var hasResultImage: Bool { controller.image != nil }
 
     var body: some View {
         ZStack {
-            cameraBackdrop
-            menuSurface
+            backdrop
             VStack(spacing: 0) {
                 topBar
+                // 出结果后状态条挂在顶栏下方，不留在屏幕中间——中间正好压着照片上的译文块。
+                resultStatusBar
                 Spacer()
-                recognitionStack
+                viewfinderStatus
                 Spacer()
                 captureControls
             }
@@ -46,74 +48,68 @@ struct CameraTranslateView: View {
             .padding(.bottom, 20)
         }
         .foregroundStyle(.white)
-        .task(id: selectedPhoto) {
-            await loadSelectedPhoto()
+        // 顶部让开取景工具条，别压在语言胶囊上。
+        .toast($toastText, topPadding: 70, identifier: "camera.toast")
+        .task {
+            controller.setLanguages(source: session.sourceLanguage, target: session.targetLanguage)
+            await controller.start()
         }
-        .task(id: recognitionRequest) {
-            await completeRecognition(request: recognitionRequest)
+        .onChange(of: "\(session.sourceLanguage.code)>\(session.targetLanguage.code)") {
+            controller.setLanguages(source: session.sourceLanguage, target: session.targetLanguage)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // 退后台必须停会话：系统会强制中断，留着只会在回前台时拿到一个死会话。
+            if newPhase == .active {
+                Task { await controller.start() }
+            } else {
+                controller.stop()
+            }
+        }
+        .onDisappear { controller.stop() }
+        .task(id: selectedPhoto) { await loadSelectedPhoto() }
+        .sheet(item: $selectedBlock) { selection in
+            // sheet 是独立 presentation，不继承根部的 preferredColorScheme。
+            blockDetail(for: selection.id)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(30)
+                .preferredColorScheme(settings.appearanceMode.colorScheme)
         }
     }
 
-    private var cameraBackdrop: some View {
+    // MARK: - 背景
+
+    @ViewBuilder
+    private var backdrop: some View {
         ZStack {
-            if let selectedImage {
-                Image(uiImage: selectedImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .accessibilityHidden(true)
+            if let image = controller.image {
+                TranslationOverlayView(
+                    image: image,
+                    blocks: controller.blocks,
+                    onSelect: { selectedBlock = BlockSelection(id: $0.id) }
+                )
+            } else if let previewLayer = controller.captureSource.previewLayer {
+                CameraPreviewView(previewLayer: previewLayer)
             } else {
-                LinearGradient(
-                    colors: [Color(hex: 0x6B5847), Color(hex: 0x4A3E32), Color(hex: 0x2E261E)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                // 无取景能力（模拟器、权限被拒）：中性底，不画假取景器。
+                AppTheme.cameraBackdrop
             }
-
-            if selectedImage != nil {
-                LinearGradient(
-                    colors: [.black.opacity(0.14), .black.opacity(0.4)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
-            RadialGradient(
-                colors: [.white.opacity(0.14), .clear],
-                center: .topLeading,
-                startRadius: 10,
-                endRadius: 420
-            )
         }
         .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.24), value: selectedImage != nil)
+        .background(Color.black.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.24), value: hasResultImage)
     }
 
-    private var menuSurface: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [Color(hex: 0xF3ECDD), Color(hex: 0xE4D8C2)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(maxWidth: .infinity, maxHeight: 540)
-            .padding(.horizontal, 36)
-            .rotationEffect(.degrees(-1.5))
-            .shadow(color: .black.opacity(0.42), radius: 34, x: 0, y: 24)
-            .offset(y: 22)
-    }
+    // MARK: - 顶部
 
     private var topBar: some View {
         HStack {
             Button(action: onPickLanguage) {
                 HStack(spacing: 8) {
-                    Text(sourceLanguage.nativeName)
+                    Text(session.sourceLanguage.nativeName)
                     Image(systemName: "arrow.left.arrow.right")
                         .font(.system(size: 12, weight: .bold))
-                    Text(targetLanguage.nativeName)
+                    Text(session.targetLanguage.nativeName)
                 }
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
@@ -128,116 +124,145 @@ struct CameraTranslateView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("选择翻译语言")
-            .accessibilityValue("\(sourceLanguage.nativeName)到\(targetLanguage.nativeName)")
+            .accessibilityValue("\(session.sourceLanguage.nativeName)到\(session.targetLanguage.nativeName)")
             .accessibilityIdentifier("camera.languagePicker")
 
             Spacer()
 
-            Button {
-                isExposureLocked.toggle()
-            } label: {
-                Image(systemName: isExposureLocked ? "sun.max.fill" : "sun.max")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(isExposureLocked ? Color.yellow : Color.white)
-                    .frame(width: 42, height: 42)
-                    .liquidGlass(in: Circle()) { content in
-                        content
-                            .background(.black.opacity(isExposureLocked ? 0.42 : 0.28), in: Circle())
-                            .background(.ultraThinMaterial, in: Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
-                    }
+            if hasResultImage {
+                glassCircleButton(
+                    systemName: "xmark",
+                    isActive: false,
+                    label: String(localized: "重拍"),
+                    hint: String(localized: "轻点丢弃这张照片并回到取景"),
+                    identifier: "camera.retakeButton",
+                    action: controller.reset
+                )
+            } else {
+                glassCircleButton(
+                    systemName: controller.isExposureLocked ? "sun.max.fill" : "sun.max",
+                    isActive: controller.isExposureLocked,
+                    label: String(localized: "曝光锁定"),
+                    value: controller.isExposureLocked
+                        ? String(localized: "已锁定")
+                        : String(localized: "自动"),
+                    hint: String(localized: "轻点切换自动曝光和曝光锁定"),
+                    identifier: "camera.exposureButton",
+                    action: { controller.isExposureLocked.toggle() }
+                )
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("曝光锁定")
-            .accessibilityValue(isExposureLocked ? "已锁定" : "自动")
-            .accessibilityHint("轻点切换自动曝光和曝光锁定")
-            .accessibilityIdentifier("camera.exposureButton")
         }
         .liquidGlassContainer()
     }
 
-    private var recognitionStack: some View {
-        VStack(spacing: 14) {
-            switch recognitionState {
-            case .ready:
-                VStack(spacing: 10) {
-                    Image(systemName: selectedImage == nil ? "viewfinder" : "photo.fill")
-                        .font(.system(size: 25, weight: .medium))
-                    Text(selectedImage == nil ? "对准菜单并轻点快门" : "图片已就绪，轻点快门识别")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
-                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("camera.recognitionReady")
+    // MARK: - 状态区
 
-            case .recognizing:
+    /// 结果态的窄状态条，紧贴顶栏。
+    @ViewBuilder
+    private var resultStatusBar: some View {
+        if controller.phase == .translating || controller.phase == .done {
+            Text(controller.phase == .done ? "已翻译 · 轻点任意文字查看原文" : "正在翻译…")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.42), in: Capsule())
+                .padding(.top, 10)
+                .accessibilityIdentifier("camera.recognitionTitle")
+        }
+    }
+
+    /// 取景态（无结果）的居中提示：此时屏幕中间没有内容可挡。
+    @ViewBuilder
+    private var viewfinderStatus: some View {
+        switch controller.phase {
+        case .translating, .done:
+            EmptyView()
+
+        case .idle, .ready:
+            statusCapsule {
+                VStack(spacing: 10) {
+                    Image(systemName: controller.captureSource.canCapture ? "viewfinder" : "photo.on.rectangle")
+                        .font(.system(size: 25, weight: .medium))
+                    Text(controller.captureSource.canCapture
+                         ? "对准文字并轻点快门"
+                         : "此设备没有可用的相机，请从相册选择照片")
+                        .font(.system(size: 14, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("camera.recognitionReady")
+
+        case .recognizing:
+            statusCapsule {
                 VStack(spacing: 12) {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.15)
-                    Text("正在识别菜单…")
+                    Text("正在识别文字…")
                         .font(.system(size: 14, weight: .semibold))
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("正在识别菜单")
-                .accessibilityIdentifier("camera.recognitionLoading")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("正在识别文字")
+            .accessibilityIdentifier("camera.recognitionLoading")
 
-            case .recognized:
-                Text("已识别 · 菜单")
-                    .font(.system(size: 13, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .padding(.bottom, 6)
-                    .accessibilityIdentifier("camera.recognitionTitle")
-
-                ForEach(MenuTranslation.samples) { item in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.source)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(AppTheme.faint)
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(item.result)
-                                .font(.system(size: 19, weight: .regular, design: .serif))
-                                .foregroundStyle(AppTheme.ink)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.78)
-                            Spacer()
-                            Text(item.price)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(AppTheme.terracotta)
+        case .failed:
+            statusCapsule {
+                VStack(spacing: 12) {
+                    Text(controller.failureMessage ?? String(localized: "文字识别出错，请重试"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                    if controller.isPermissionFailure {
+                        Button("前往设置") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
                         }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .accessibilityIdentifier("camera.openSettings")
+                    } else if controller.image != nil {
+                        Button("重试", action: controller.retryRecognition)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .accessibilityIdentifier("camera.retryButton")
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                    .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: .black.opacity(0.24), radius: 18, x: 0, y: 10)
-                    .accessibilityElement(children: .combine)
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("camera.recognitionError")
         }
-        .padding(.horizontal, 12)
-        .animation(.easeInOut(duration: 0.22), value: recognitionState)
     }
 
+    private func statusCapsule<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+            .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 12)
+    }
+
+    // MARK: - 底部控制
+
     private var captureControls: some View {
-        HStack {
+        // PhotosPicker 的 label 闭包不是 MainActor 隔离的，controller 的状态要先在
+        // 这里（隔离上下文）读出来再带进去。
+        let thumbnail = controller.image
+        return HStack {
             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                 Group {
-                    if let selectedImage {
-                        Image(uiImage: selectedImage)
+                    if let image = thumbnail {
+                        Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                     } else {
-                        LinearGradient(
-                            colors: [Color(hex: 0xC9B89A), Color(hex: 0x8A7960)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(.black.opacity(0.34))
                     }
                 }
                 .frame(width: 46, height: 46)
@@ -245,21 +270,20 @@ struct CameraTranslateView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.5), lineWidth: 2))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("从照片图库选择菜单照片")
-            .accessibilityValue(selectedImage == nil ? "未选择" : "已选择")
+            .accessibilityLabel("从相册选择照片")
+            .accessibilityValue(thumbnail == nil ? "未选择" : "已选择")
             .accessibilityIdentifier("camera.galleryPicker")
 
             Spacer()
 
-            Button(action: startRecognition) {
+            Button(action: controller.capture) {
                 Circle()
                     .stroke(.white.opacity(0.9), lineWidth: 4)
                     .frame(width: 74, height: 74)
                     .overlay {
-                        if recognitionState == .recognizing {
+                        if controller.isBusy {
                             ProgressView()
-                                // 快门盘是固定白色的相机件，转圈也固定深色，不随 ink 自适应。
-                                .tint(Color(hex: 0x1C1A17))
+                                .tint(AppTheme.shutterInk)
                                 .frame(width: 58, height: 58)
                                 .background(.white, in: Circle())
                         } else {
@@ -268,85 +292,229 @@ struct CameraTranslateView: View {
                                 .frame(width: 58, height: 58)
                         }
                     }
+                    .opacity(controller.canCapture ? 1 : 0.45)
             }
             .buttonStyle(.plain)
-            .disabled(recognitionState == .recognizing)
-            .accessibilityLabel("拍摄并识别菜单")
-            .accessibilityHint("轻点后识别菜单文字并显示翻译")
+            .disabled(!controller.canCapture)
+            .accessibilityLabel("拍摄并翻译")
+            .accessibilityHint("轻点后识别画面里的文字并就地显示译文")
             .accessibilityIdentifier("camera.shutterButton")
 
             Spacer()
 
             Button {
-                isFlashOn.toggle()
+                controller.isFlashOn.toggle()
             } label: {
-                Image(systemName: isFlashOn ? "bolt.fill" : "bolt.slash.fill")
+                Image(systemName: controller.isFlashOn ? "bolt.fill" : "bolt.slash.fill")
                     .font(.system(size: 21, weight: .bold))
-                    .foregroundStyle(isFlashOn ? Color.yellow : Color.white)
+                    .foregroundStyle(controller.isFlashOn ? Color.yellow : Color.white)
                     .frame(width: 46, height: 46)
                     .liquidGlass(in: Circle()) { content in
                         content
-                            .background(.white.opacity(isFlashOn ? 0.24 : 0.16), in: Circle())
+                            .background(.white.opacity(controller.isFlashOn ? 0.24 : 0.16), in: Circle())
                     }
             }
             .buttonStyle(.plain)
+            .disabled(!controller.captureSource.isFlashAvailable)
+            .opacity(controller.captureSource.isFlashAvailable ? 1 : 0.45)
             .accessibilityLabel("闪光灯")
             // 不用裸「关闭」：与关闭按钮的「关闭」（Close）同 key 异义，目录里无法各翻各的。
-            .accessibilityValue(isFlashOn ? "已开启" : "已关闭")
+            .accessibilityValue(controller.isFlashOn ? "已开启" : "已关闭")
             .accessibilityHint("轻点切换闪光灯")
             .accessibilityIdentifier("camera.flashButton")
         }
     }
 
-    private func startRecognition() {
-        recognitionState = .recognizing
-        recognitionRequest += 1
+    private func glassCircleButton(
+        systemName: String,
+        isActive: Bool,
+        label: String,
+        value: String? = nil,
+        hint: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(isActive ? Color.yellow : Color.white)
+                .frame(width: 42, height: 42)
+                .liquidGlass(in: Circle()) { content in
+                    content
+                        .background(.black.opacity(isActive ? 0.42 : 0.28), in: Circle())
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(value ?? "")
+        .accessibilityHint(hint)
+        .accessibilityIdentifier(identifier)
     }
 
-    @MainActor
-    private func completeRecognition(request: Int) async {
-        guard request > 0 else { return }
+    // MARK: - 单块详情
 
-        do {
-            try await Task.sleep(nanoseconds: 850_000_000)
-        } catch {
-            return
-        }
-
-        guard !Task.isCancelled, request == recognitionRequest else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            recognitionState = .recognized
+    @ViewBuilder
+    private func blockDetail(for id: UUID) -> some View {
+        if let block = controller.blocks.first(where: { $0.id == id }) {
+            PhotoBlockDetailView(
+                block: block,
+                onCopy: {
+                    UIPasteboard.general.string = block.displayText
+                    showToast(String(localized: "译文已复制"))
+                },
+                onSpeak: { controller.speak(block) },
+                onSave: { saveToHistory(block) },
+                onRetry: { controller.retryTranslation(for: block.id) },
+                onClose: { selectedBlock = nil }
+            )
         }
     }
+
+    private func saveToHistory(_ block: PhotoTranslationController.TranslatedBlock) {
+        guard !block.translation.isEmpty else { return }
+        let languages = controller.historyLanguages
+        session.save(
+            source: block.source,
+            result: block.translation,
+            sourceLanguage: languages.source,
+            targetLanguage: languages.target
+        )
+        showToast(String(localized: "已存入历史记录"))
+    }
+
+    // MARK: - 相册
 
     @MainActor
     private func loadSelectedPhoto() async {
         guard let selectedPhoto else { return }
-
         guard let data = try? await selectedPhoto.loadTransferable(type: Data.self),
               !Task.isCancelled,
               let image = UIImage(data: data) else {
             return
         }
+        controller.use(image)
+    }
 
-        recognitionRequest = 0
-        withAnimation(.easeInOut(duration: 0.24)) {
-            selectedImage = image
-            recognitionState = .ready
-        }
+    /// 自动消失由 .toast 修饰器负责，这里只管上屏。
+    private func showToast(_ text: String) {
+        withAnimation { toastText = text }
+    }
+
+    /// sheet 需要 Identifiable，而块本身会随译文到达而变——只带 id 进 sheet，
+    /// 内容每次从 controller 现取，重试后的新译文能原地刷新。
+    private struct BlockSelection: Identifiable {
+        let id: UUID
     }
 }
 
-private enum RecognitionState: Equatable {
-    case ready
-    case recognizing
-    case recognized
+private struct PhotoBlockDetailView: View {
+    let block: PhotoTranslationController.TranslatedBlock
+    let onCopy: () -> Void
+    let onSpeak: () -> Void
+    let onSave: () -> Void
+    let onRetry: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                SectionLabel(text: String(localized: "原文"))
+                Spacer()
+                SheetCloseButton(action: onClose)
+                    .accessibilityIdentifier("camera.blockDetail.close")
+            }
+            .padding(.bottom, 8)
+
+            Text(block.source)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(AppTheme.secondaryInk)
+                .textSelection(.enabled)
+                .accessibilityIdentifier("camera.blockDetail.source")
+
+            Divider()
+                .overlay(AppTheme.divider)
+                .padding(.vertical, 16)
+
+            SectionLabel(text: String(localized: "译文"))
+                .padding(.bottom, 8)
+
+            if block.failed {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("翻译失败，请重试")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(AppTheme.secondaryInk)
+                    Button(action: onRetry) {
+                        Text("重试")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 8)
+                            .background(AppTheme.terracottaFill, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("camera.blockDetail.retry")
+                }
+            } else if block.isPending {
+                HStack(spacing: 10) {
+                    ProgressView().tint(AppTheme.terracotta)
+                    Text("正在翻译…")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(AppTheme.secondaryInk)
+                }
+                .accessibilityIdentifier("camera.blockDetail.loading")
+            } else {
+                Text(block.translation)
+                    .font(.system(size: 21, weight: .regular, design: .serif))
+                    .foregroundStyle(AppTheme.resultInk)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("camera.blockDetail.translation")
+            }
+
+            Spacer(minLength: 20)
+
+            HStack(spacing: 22) {
+                actionButton(systemName: "doc.on.doc", label: String(localized: "复制译文"), identifier: "camera.blockDetail.copy", action: onCopy)
+                actionButton(systemName: "speaker.wave.2", label: String(localized: "朗读译文"), identifier: "camera.blockDetail.speak", action: onSpeak)
+                actionButton(systemName: "clock.arrow.circlepath", label: String(localized: "存入历史记录"), identifier: "camera.blockDetail.save", action: onSave)
+                Spacer()
+            }
+            .disabled(block.isPending || block.failed)
+            .opacity(block.isPending || block.failed ? 0.4 : 1)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .padding(.bottom, 26)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(AppTheme.paper.ignoresSafeArea())
+    }
+
+    private func actionButton(
+        systemName: String,
+        label: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            TextActionIcon(systemName: systemName)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
+    }
 }
 
 #Preview {
-    CameraTranslateView(
-        sourceLanguage: .chinese,
-        targetLanguage: .english,
+    let settings = AppSettings()
+    return CameraTranslateView(
+        controller: PhotoTranslationController(
+            settings: settings,
+            captureSource: CameraCaptureSource(),
+            recognizer: VisionTextRecognitionService()
+        ),
+        session: TranslationSession(settings: settings),
+        settings: settings,
         onPickLanguage: {}
     )
 }

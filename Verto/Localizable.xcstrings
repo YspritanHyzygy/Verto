@@ -588,37 +588,37 @@
         }
       }
     },
-    "从照片图库选择菜单照片" : {
+    "从相册选择照片" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose a menu photo from your library"
+            "value" : "Choose a photo from your library"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Elegir una foto del menú de la fototeca"
+            "value" : "Elegir una foto de la fototeca"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "写真ライブラリからメニューの写真を選択"
+            "value" : "フォトライブラリから写真を選択"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "사진 보관함에서 메뉴 사진 선택"
+            "value" : "사진 보관함에서 사진 선택"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从照片图库选择菜单照片"
+            "value" : "从相册选择照片"
           }
         }
       }
@@ -1218,41 +1218,6 @@
         }
       }
     },
-    "图片已就绪，轻点快门识别" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Photo ready — tap the shutter to recognize"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imagen lista: toca el obturador para reconocer"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "画像の準備ができました。シャッターをタップして認識"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "사진이 준비되었습니다. 셔터를 탭하여 인식하세요"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图片已就绪，轻点快门识别"
-          }
-        }
-      }
-    },
     "复制译文" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1393,6 +1358,41 @@
         }
       }
     },
+    "存入历史记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save to history"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar en el historial"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴に保存"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기록에 저장"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存入历史记录"
+          }
+        }
+      }
+    },
     "完成并翻译" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1463,37 +1463,37 @@
         }
       }
     },
-    "对准菜单并轻点快门" : {
+    "对准文字并轻点快门" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Point at a menu and tap the shutter"
+            "value" : "Aim at the text and tap the shutter"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apunta al menú y toca el obturador"
+            "value" : "Apunta al texto y toca el obturador"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メニューに向けてシャッターをタップ"
+            "value" : "文字に向けてシャッターをタップ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "메뉴를 향해 셔터를 탭하세요"
+            "value" : "텍스트를 비추고 셔터를 누르세요"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "对准菜单并轻点快门"
+            "value" : "对准文字并轻点快门"
           }
         }
       }
@@ -1603,6 +1603,41 @@
         }
       }
     },
+    "已存入历史记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved to history"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado en el historial"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "履歴に保存しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기록에 저장했습니다"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已存入历史记录"
+          }
+        }
+      }
+    },
     "已开启" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1708,37 +1743,37 @@
         }
       }
     },
-    "已识别 · 菜单" : {
+    "已翻译 · 轻点任意文字查看原文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recognized · Menu"
+            "value" : "Translated · Tap any text to see the original"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconocido · Menú"
+            "value" : "Traducido · Toca cualquier texto para ver el original"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "認識済み · メニュー"
+            "value" : "翻訳完了・文字をタップすると原文を表示"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "인식됨 · 메뉴"
+            "value" : "번역 완료 · 텍스트를 누르면 원문 표시"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已识别 · 菜单"
+            "value" : "已翻译 · 轻点任意文字查看原文"
           }
         }
       }
@@ -1988,37 +2023,72 @@
         }
       }
     },
-    "拍摄并识别菜单" : {
+    "拍摄并翻译" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Capture and recognize the menu"
+            "value" : "Capture and translate"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Capturar y reconocer el menú"
+            "value" : "Capturar y traducir"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "撮影してメニューを認識"
+            "value" : "撮影して翻訳"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "촬영하여 메뉴 인식"
+            "value" : "촬영 후 번역"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "拍摄并识别菜单"
+            "value" : "拍摄并翻译"
+          }
+        }
+      }
+    },
+    "拍照失败，请重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t take the photo. Please try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo tomar la foto. Inténtalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撮影に失敗しました。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진 촬영에 실패했습니다. 다시 시도해 주세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍照失败，请重试"
           }
         }
       }
@@ -2194,6 +2264,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文字"
+          }
+        }
+      }
+    },
+    "文字识别出错，请重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text recognition failed. Please try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error al reconocer el texto. Inténtalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字認識でエラーが発生しました。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "텍스트 인식에 실패했습니다. 다시 시도해 주세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字识别出错，请重试"
           }
         }
       }
@@ -2509,6 +2614,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未找到语言"
+          }
+        }
+      }
+    },
+    "未获得相机权限，请在系统设置中开启" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera access is not allowed. Enable it in Settings."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay acceso a la cámara. Actívalo en Ajustes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラへのアクセスが許可されていません。設定で有効にしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카메라 권한이 없습니다. 설정에서 허용해 주세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未获得相机权限，请在系统设置中开启"
           }
         }
       }
@@ -2968,72 +3108,107 @@
         }
       }
     },
-    "正在识别菜单" : {
+    "正在识别文字" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recognizing the menu"
+            "value" : "Recognizing text"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconociendo el menú"
+            "value" : "Reconociendo texto"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メニューを認識中"
+            "value" : "文字を認識中"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "메뉴 인식 중"
+            "value" : "텍스트 인식 중"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在识别菜单"
+            "value" : "正在识别文字"
           }
         }
       }
     },
-    "正在识别菜单…" : {
+    "正在识别文字…" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recognizing the menu…"
+            "value" : "Recognizing text…"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconociendo el menú…"
+            "value" : "Reconociendo texto…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メニューを認識中…"
+            "value" : "文字を認識中…"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "메뉴 인식 중…"
+            "value" : "텍스트 인식 중…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在识别菜单…"
+            "value" : "正在识别文字…"
+          }
+        }
+      }
+    },
+    "此设备没有可用的相机，请从相册选择照片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device has no camera available. Choose a photo from your library."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este dispositivo no tiene cámara disponible. Elige una foto de la fototeca."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この端末では使えるカメラがありません。ライブラリから写真を選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에는 사용할 수 있는 카메라가 없습니다. 라이브러리에서 사진을 선택하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备没有可用的相机，请从相册选择照片"
           }
         }
       }
@@ -3314,6 +3489,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点按以编辑原文"
+          }
+        }
+      }
+    },
+    "画面里没有找到文字，换个角度再试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No text found. Try a different angle."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontró texto. Prueba con otro ángulo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字が見つかりませんでした。角度を変えてお試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "텍스트를 찾지 못했습니다. 각도를 바꿔 다시 시도해 보세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面里没有找到文字，换个角度再试"
           }
         }
       }
@@ -4683,6 +4893,41 @@
         }
       }
     },
+    "轻点丢弃这张照片并回到取景" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to discard this photo and return to the viewfinder"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para descartar esta foto y volver al visor"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップするとこの写真を破棄してファインダーに戻ります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "누르면 이 사진을 지우고 뷰파인더로 돌아갑니다"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点丢弃这张照片并回到取景"
+          }
+        }
+      }
+    },
     "轻点切换自动曝光和曝光锁定" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4753,37 +4998,37 @@
         }
       }
     },
-    "轻点后识别菜单文字并显示翻译" : {
+    "轻点后识别画面里的文字并就地显示译文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recognizes the menu text and shows translations"
+            "value" : "Tap to recognize the text on screen and show the translation in place"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconoce el texto del menú y muestra la traducción"
+            "value" : "Toca para reconocer el texto en pantalla y mostrar la traducción en su lugar"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メニューの文字を認識して翻訳を表示します"
+            "value" : "タップすると画面内の文字を認識し、その場に訳文を表示します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "메뉴의 텍스트를 인식하고 번역을 표시합니다"
+            "value" : "누르면 화면의 텍스트를 인식해 그 자리에 번역을 표시합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点后识别菜单文字并显示翻译"
+            "value" : "轻点后识别画面里的文字并就地显示译文"
           }
         }
       }
@@ -4819,6 +5064,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "轻点开始对话"
+          }
+        }
+      }
+    },
+    "轻点查看原文与译文对照" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to compare the original and the translation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para comparar el original y la traducción"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タップすると原文と訳文を並べて表示します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "누르면 원문과 번역을 나란히 봅니다"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点查看原文与译文对照"
           }
         }
       }
@@ -5169,6 +5449,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通用偏好"
+          }
+        }
+      }
+    },
+    "重拍" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retake"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repetir foto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撮り直す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 촬영"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重拍"
           }
         }
       }

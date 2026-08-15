@@ -48,6 +48,41 @@
         }
       }
     },
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo translation uses the camera to capture the text in front of you so it can be recognized and translated."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La traducción con fotos usa la cámara para capturar el texto que tienes delante y así reconocerlo y traducirlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真翻訳では、目の前の文字を認識して翻訳するためにカメラで撮影します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진 번역은 눈앞의 글자를 인식하고 번역하기 위해 카메라로 촬영합니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。"
+          }
+        }
+      }
+    },
     "NSMicrophoneUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {

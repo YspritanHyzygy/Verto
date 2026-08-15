@@ -112,20 +112,7 @@ struct TextTranslateView: View {
             .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .background(AppTheme.paper.ignoresSafeArea())
-        .overlay(alignment: .top) {
-            if let toastText {
-                Text(toastText)
-                    .font(.system(size: 13, weight: .semibold))
-                    // ink 胶囊在深色下变浅米色，字色要跟着反转（paper 深色下是近黑）。
-                    .foregroundStyle(AppTheme.paper)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(AppTheme.ink.opacity(0.9), in: Capsule())
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .accessibilityIdentifier("translation-toast")
-            }
-        }
+        .toast($toastText, identifier: "translation-toast")
         .sheet(item: $presentedSheet, onDismiss: restoreDraftFocusIfNeeded) { destination in
             // sheet 是独立 presentation，不可靠继承根部的 preferredColorScheme，显式再套一层。
             sheetView(for: destination)
@@ -873,14 +860,9 @@ struct TextTranslateView: View {
         showToast(String(localized: "译文已复制"))
     }
 
+    /// 自动消失由 .toast 修饰器负责，这里只管上屏。
     private func showToast(_ text: String) {
         withAnimation { toastText = text }
-        Task {
-            try? await Task.sleep(nanoseconds: 1_300_000_000)
-            if toastText == text {
-                withAnimation { toastText = nil }
-            }
-        }
     }
 }
 

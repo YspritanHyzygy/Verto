@@ -200,6 +200,45 @@ struct TextActionIcon: View {
     }
 }
 
+extension View {
+    /// 顶部短提示。文字页与相机页共用同一份视觉与自动消失逻辑。
+    /// `topPadding` 是唯一的差异点：相机页顶部有取景工具条，要让开。
+    func toast(_ text: Binding<String?>, topPadding: CGFloat = 8, identifier: String) -> some View {
+        modifier(ToastModifier(text: text, topPadding: topPadding, identifier: identifier))
+    }
+}
+
+private struct ToastModifier: ViewModifier {
+    @Binding var text: String?
+    let topPadding: CGFloat
+    let identifier: String
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            if let text {
+                Text(text)
+                    .font(.system(size: 13, weight: .semibold))
+                    // ink 胶囊在深色下变浅米色，字色要跟着反转（paper 深色下是近黑）。
+                    .foregroundStyle(AppTheme.paper)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.ink.opacity(0.9), in: Capsule())
+                    .padding(.top, topPadding)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier(identifier)
+                    .task(id: text) {
+                        // 停留可读的一段时间后自行淡出。等的是用户读完，不是任何系统事件；
+                        // 挂在 .task(id:) 上，新提示顶掉旧提示时旧计时自动作废。
+                        try? await Task.sleep(for: .seconds(1.3))
+                        guard !Task.isCancelled else { return }
+                        withAnimation { self.text = nil }
+                    }
+            }
+        }
+    }
+}
+
 struct SheetCloseButton: View {
     let action: () -> Void
 

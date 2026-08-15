@@ -164,19 +164,6 @@ struct ConversationTurn: Identifiable {
     ]
 }
 
-struct MenuTranslation: Identifiable {
-    let id = UUID()
-    let source: String
-    let result: String
-    let price: String
-
-    static let samples: [MenuTranslation] = [
-        MenuTranslation(source: "红烧牛肉面", result: "Braised Beef Noodles", price: "¥38"),
-        MenuTranslation(source: "宫保鸡丁", result: "Kung Pao Chicken", price: "¥32"),
-        MenuTranslation(source: "麻婆豆腐", result: "Mapo Tofu", price: "¥26")
-    ]
-}
-
 struct HistoryItem: Identifiable, Equatable {
     let id: UUID
     let dayLabel: String
@@ -425,11 +412,27 @@ final class TranslationSession {
     }
 
     func saveCurrent(favorite: Bool? = nil) {
-        guard !sourceText.isEmpty, !translatedText.isEmpty else { return }
-        let sourceLanguage = resolvedSourceLanguage
+        save(
+            source: sourceText,
+            result: translatedText,
+            sourceLanguage: resolvedSourceLanguage,
+            targetLanguage: targetLanguage,
+            favorite: favorite
+        )
+    }
+
+    /// 写入历史（已存在同条则只更新收藏态）。文字页与相机页共用这一份去重与插入逻辑。
+    func save(
+        source: String,
+        result: String,
+        sourceLanguage: Language,
+        targetLanguage: Language,
+        favorite: Bool? = nil
+    ) {
+        guard !source.isEmpty, !result.isEmpty else { return }
         if let index = historyItems.firstIndex(where: {
-            $0.source == sourceText
-                && $0.result == translatedText
+            $0.source == source
+                && $0.result == result
                 && $0.sourceLanguage == sourceLanguage
                 && $0.targetLanguage == targetLanguage
         }) {
@@ -444,8 +447,8 @@ final class TranslationSession {
                 dayLabel: "今天",
                 sourceLanguage: sourceLanguage,
                 targetLanguage: targetLanguage,
-                source: sourceText,
-                result: translatedText,
+                source: source,
+                result: result,
                 isFavorite: favorite ?? false
             ),
             at: 0

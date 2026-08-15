@@ -38,6 +38,8 @@ final class LocalizationTests: XCTestCase {
         "英语",
         "今天",
         "全部语言",
+        "对准文字并轻点快门",
+        "未获得相机权限，请在系统设置中开启",
     ]
 
     private func bundle(for language: String) throws -> Bundle {

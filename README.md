@@ -55,7 +55,13 @@
 
 ### 相机翻译
 
-照片选择、识别加载态、菜单翻译覆盖卡、闪光灯与曝光状态。
+对准文字按快门（或从相册选图），Vision 端侧 OCR 识别整幅画面，**译文就地叠加回原文所在的位置**——按识别出的四边形定位、跟随原文倾角旋转、底色与字色从原图采样，用采样到的底色盖掉原文再写上译文，字号按行高起算并自适应收缩塞进原框。
+
+识别出的行按位置合并成段落再整段送翻译（逐行翻译会把一句话切碎）：同栏、行距在一行半以内、倾角相近、**字号相当**才算同段——标题与紧邻正文只差一行间距，光看间距会被并成一段，字号之比才是判据；分栏菜单的左右两列因水平投影零重叠而不会被并到一起。翻译按去重后的原文逐块并发，**识别不等翻译**——块先带原文上屏，译文到一块填一块，单块失败只在该块内重试，不拖垮整页；同一张图里重复出现的短句只发一次请求，跨轮复用进程内 LRU 缓存。
+
+轻点任意一块看原文/译文对照，可复制、朗读（用目标语言音色）、存入历史记录（与文字页共用同一份去重与插入逻辑）。闪光灯接 `AVCapturePhotoSettings.flashMode`、曝光按钮接 `AVCaptureDevice.exposureMode`，设备无闪光灯时按钮置灰。换语言对会按同一张图重译，不要求重拍。
+
+相机权限在进入页面时惰性请求，被拒时页面内给出说明与「前往设置」；设备无可用相机（含模拟器）时不画假取景器，改为提示从相册选择、快门置灰。切走 tab 或退到后台会停掉采集会话。
 
 ### 语言、历史与收藏
 
@@ -77,7 +83,7 @@
 
 ## 现状与路线
 
-文字翻译已接入谷歌翻译非官方免费接口（需要能够访问谷歌服务的网络环境）；语音对话为真实语音识别与翻译管线（见上）；菜单 OCR 目前使用本地演示数据。自研模型与基于 LLM 的翻译引擎为后续计划，暂以占位形式出现在设置页——未来流式语音翻译引擎的接缝已留在 `Verto/Voice/AppleTranslationService.swift` 底部（`StreamingSpeechTranslating` 协议桩，挂在语音会话层而非 text→text 层）。
+文字翻译已接入谷歌翻译非官方免费接口（需要能够访问谷歌服务的网络环境）；语音对话为真实语音识别与翻译管线（见上）；相机翻译为真实的 Vision 端侧 OCR + 翻译管线（见上）。自研模型与基于 LLM 的翻译引擎为后续计划，暂以占位形式出现在设置页——未来流式语音翻译引擎的接缝已留在 `Verto/Voice/AppleTranslationService.swift` 底部（`StreamingSpeechTranslating` 协议桩，挂在语音会话层而非 text→text 层）。
 
 ## 在 Xcode 中运行
 
@@ -105,13 +111,15 @@ xcodebuild \
 
 **苹果官方约束，已实测核实**：SpeechTranscriber 与 Translation 框架在 iOS 模拟器上都不可用（模拟器无 ANE、无翻译模型）。模拟器上语音页自动落到 SFSpeechRecognizer + 谷歌翻译回退链路，且实测（iOS 27 模拟器）：**en-US 因系统强制本地识别器而无法初始化（kLSRErrorDomain 300，端上/服务器模式都挂），zh-CN 走服务器识别完全可用**——所以模拟器上说中文可以真实走通「识别→翻译→朗读」，说英文会由多轨自动检测静默跳过失败轨（仅英文单轨时给出「模拟器暂不支持这种语言的识别」文案）。
 
-诊断可随时重跑 `VertoTests/SpeechAvailabilityProbeTests`（报告落盘 /private/tmp/speech-availability-probe.txt）。SpeechAnalyzer 路径、系统离线翻译、语言模型下载、`.lowLatency` 策略、双轨真机表现与耳机检测只能在真机验证。UI 测试通过 `--uitest-canned-speech` 注入脚本化识别与静音 TTS，全程不碰真实音频。
+模拟器同样**没有摄像头**：相机页的取景与拍照只能在真机验证，模拟器上相机页显示“此设备没有可用的相机”并把相册入口提到主位。**Vision 文字识别在模拟器上可用**（已实测：revision 3、33 种语言，`Language.all` 七种全部支持），相册选图 → OCR → 翻译 → 叠加这条链路在模拟器上完整可用；诊断可随时重跑 `VertoTests/VisionAvailabilityProbeTests`（报告落盘 /private/tmp/vision-availability-probe.txt）。
+
+诊断可随时重跑 `VertoTests/SpeechAvailabilityProbeTests`（报告落盘 /private/tmp/speech-availability-probe.txt）。SpeechAnalyzer 路径、系统离线翻译、语言模型下载、`.lowLatency` 策略、双轨真机表现与耳机检测只能在真机验证。UI 测试通过 `--uitest-canned-speech` 与 `--uitest-canned-camera` 注入脚本化识别、静音 TTS 与合成拍照，全程不碰真实音频与相机。
 
 ## 自动化测试
 
-工程包含 `VertoUITests` UI 测试 Target，验收目标覆盖文字翻译与收藏、语言搜索与选择、语音「待机 → 聆听 → 定稿气泡 → 暂停」全流程、语音朗读模式设置选择、相机识别结果、原生 TabView 的跨 tab 切换/选中态同步/状态保留、“键入草稿 → 完成并翻译 → 恢复结果页”，以及 DEBUG “减弱动态效果”终态回归等主流程。
+工程包含 `VertoUITests` UI 测试 Target，验收目标覆盖文字翻译与收藏、语言搜索与选择、语音「待机 → 聆听 → 定稿气泡 → 暂停」全流程、语音朗读模式设置选择、相机「快门 → 就地叠加译文 → 轻点看对照 → 存入历史」全流程、原生 TabView 的跨 tab 切换/选中态同步/状态保留、“键入草稿 → 完成并翻译 → 恢复结果页”，以及 DEBUG “减弱动态效果”终态回归等主流程。
 
-UI 测试统一携带 `--uitest-canned-translation`、`--uitest-canned-speech` 与 `--uitest-reset-settings` 启动参数：前两者注入固定演示译文与脚本化语音识别（不访问真实网络、不碰麦克风与 TTS），后者复位持久化偏好，保证断言稳定。
+UI 测试统一携带 `--uitest-canned-translation`、`--uitest-canned-speech`、`--uitest-canned-camera` 与 `--uitest-reset-settings` 启动参数：前三者注入固定演示译文、脚本化语音识别与合成拍照+识别（不访问真实网络、不碰麦克风、TTS 与相机），后者复位持久化偏好，保证断言稳定。合成告示牌的画面与“识别”出的文字块共用同一份行数据，叠加层因此落在真正画着字的位置上。
 
 界面已多语言化，测试统一钉在简体中文运行：共享 Scheme 的 Test action 指定 `zh-Hans`（管住宿主 app 里的单元测试），UI 测试另在启动参数里显式传 `-AppleLanguages`，中文文案断言因此不受模拟器语言影响；`LocalizationTests` 与英文界面冒烟测试覆盖各语言资源的完整性与真实加载。
 

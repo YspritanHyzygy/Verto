@@ -44,6 +44,16 @@ enum AppTheme {
     static let bubbleAccentLabel = Color(light: 0xC99A85, dark: 0xD5A084)
     /// 错误/重试文字。
     static let alert = Color(light: 0xB4443C, dark: 0xE07A6C)
+    /// 压在照片（而非 app 纸面）上的固定告警色：译文贴片的底色是从原图采样来的，
+    /// 自适应 token 会在浅色照片上被冲淡，这里必须钉死一个高对比红。
+    static let alertOnPhoto = Color(hex: 0xE0503C)
+    /// 快门盘上的内容色。快门盘是固定白色的相机件，压在它上面的转圈也必须固定深色——
+    /// 用自适应的 ink 会在深色模式下变浅米色，白盘上直接隐形。
+    static let shutterInk = Color(hex: 0x1C1A17)
+    /// 相机页没有取景画面（模拟器无摄像头、权限被拒）时的底。
+    /// **必须固定深色**：相机页整套 chrome（白字、白描边玻璃钮、半透明黑胶囊）
+    /// 是按压在照片上设计的，底一旦跟着浅色模式变浅，白字和闪光灯图标就地隐形。
+    static let cameraBackdrop = Color(hex: 0x2A2622)
     static let divider = Color(uiColor: UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? UIColor.white.withAlphaComponent(0.08)

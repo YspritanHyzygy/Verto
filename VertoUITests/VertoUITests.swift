@@ -695,7 +695,7 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
-    func testCameraShutterShowsRecognizedMenuResults() throws {
+    func testCameraShutterOverlaysTranslationsOnTheCapturedPhoto() throws {
         let app = launchApp(mode: "camera")
 
         XCTAssertTrue(waitUntilSelected(tabButton(named: "相机", in: app)))
@@ -715,14 +715,79 @@ final class VertoUITests: XCTestCase {
         XCTAssertFalse(flash.frame.intersects(tabBarFrame))
         shutter.tap()
 
-        // As with voice processing, the loading state completes before XCUI's
-        // post-tap idle wait returns. Verify the stable recognized state and data.
-        let recognizedTitle = element("camera.recognitionTitle", in: app)
-        XCTAssertTrue(recognizedTitle.waitForExistence(timeout: 4))
+        // 同语音处理：加载态在 XCUI 的点后空闲等待返回之前就结束了，
+        // 只断言稳定的终态与数据。
+        let status = element("camera.recognitionTitle", in: app)
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
         XCTAssertTrue(shutter.isEnabled)
 
-        let recognizedResult = firstElement(containingLabel: "Braised Beef Noodles", in: app)
-        XCTAssertTrue(recognizedResult.waitForExistence(timeout: 2))
+        // 至少一块译文贴片就地叠在照片上。
+        let firstBlock = element("camera.block.0", in: app)
+        XCTAssertTrue(firstBlock.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(elementCount("camera.block.1", in: app), 0, "多行告示应识别出多块")
+        captureScreenshot(named: "camera-overlay", of: app)
+
+        // 贴片的 label 是原文、value 是译文：断言两者的关系而非罐头字面值——
+        // 源语言中文、目标语言英文，译文必须含拉丁字母且不等于原文。
+        let source = firstBlock.label
+        let translated = firstBlock.value as? String ?? ""
+        XCTAssertFalse(source.isEmpty)
+        XCTAssertNotEqual(translated, source, "贴片仍显示原文说明译文没填进去")
+        XCTAssertNotNil(
+            translated.rangeOfCharacter(from: .latinLetters),
+            "目标语言为英文时译文应含拉丁字母，实际：\(translated)"
+        )
+    }
+
+    @MainActor
+    func testTappingAnOverlayBlockOpensDetailAndSavesToHistory() throws {
+        let app = launchApp(mode: "camera")
+
+        let shutter = element("camera.shutterButton", in: app)
+        XCTAssertTrue(shutter.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntilHittable(shutter))
+        shutter.tap()
+
+        let firstBlock = element("camera.block.0", in: app)
+        XCTAssertTrue(firstBlock.waitForExistence(timeout: 5))
+        let blockSource = firstBlock.label
+        XCTAssertTrue(waitUntilHittable(firstBlock))
+        firstBlock.tap()
+
+        // 详情页给出原文/译文对照。
+        let detailSource = element("camera.blockDetail.source", in: app)
+        let detailTranslation = element("camera.blockDetail.translation", in: app)
+        XCTAssertTrue(detailSource.waitForExistence(timeout: 4))
+        XCTAssertTrue(detailTranslation.waitForExistence(timeout: 4))
+        XCTAssertEqual(detailSource.label, blockSource, "详情里的原文应与贴片上那块一致")
+        XCTAssertNotEqual(detailTranslation.label, detailSource.label)
+        captureScreenshot(named: "camera-block-detail", of: app)
+
+        let translationText = detailTranslation.label
+        let save = element("camera.blockDetail.save", in: app)
+        XCTAssertTrue(save.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilHittable(save))
+        save.tap()
+
+        let copy = element("camera.blockDetail.copy", in: app)
+        XCTAssertTrue(copy.waitForExistence(timeout: 2))
+        copy.tap()
+        XCTAssertTrue(element("camera.blockDetail.speak", in: app).exists)
+
+        // 存进去的那条要能在历史记录里找回来。
+        let closeDetail = element("camera.blockDetail.close", in: app)
+        XCTAssertTrue(closeDetail.waitForExistence(timeout: 2))
+        closeDetail.tap()
+        XCTAssertTrue(waitUntilAbsent(detailTranslation))
+
+        tabButton(named: "文字", in: app).tap()
+        let historyButton = element("history-button", in: app)
+        XCTAssertTrue(historyButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntilHittable(historyButton))
+        historyButton.tap()
+
+        let savedEntry = firstElement(containingLabel: translationText, in: app)
+        XCTAssertTrue(savedEntry.waitForExistence(timeout: 4), "相机译文没有出现在历史记录里")
     }
 
     @MainActor
@@ -806,9 +871,11 @@ final class VertoUITests: XCTestCase {
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
             "--uitest-mode", mode,
-            // 固定演示译文/脚本化语音，UI 测试不碰真实网络、麦克风与 TTS。
+            // 固定演示译文/脚本化语音/合成拍照与识别，
+            // UI 测试不碰真实网络、麦克风、TTS 与相机。
             "--uitest-canned-translation",
-            "--uitest-canned-speech"
+            "--uitest-canned-speech",
+            "--uitest-canned-camera"
         ]
         if resetSettings {
             app.launchArguments.append("--uitest-reset-settings")
@@ -913,4 +980,7 @@ private extension CharacterSet {
     /// 平假名 + 片假名两个 Unicode 区块。断言"译文属于哪种语言"时用它，
     /// 这样不必把某句罐头译文钉成规格，换成真实翻译服务后断言依然成立。
     static let japaneseKana = CharacterSet(charactersIn: "\u{3040}"..."\u{30FF}")
+    /// 基本拉丁字母。同上，用来判定"译文确实是英文"而不钉死某一句。
+    static let latinLetters = CharacterSet(charactersIn: "a"..."z")
+        .union(CharacterSet(charactersIn: "A"..."Z"))
 }

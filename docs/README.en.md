@@ -55,7 +55,13 @@ Incoming calls, backgrounding, and tab switches all stop capture; the conversati
 
 ### Camera translation
 
-Photo picking, recognition loading state, menu-translation overlay cards, flash and exposure states.
+Aim at the text and press the shutter (or pick from the library). Vision runs on-device OCR over the whole frame and **the translation is laid back over the original, in place** — positioned from the recognized quadrilateral, rotated to the original's tilt, with background and text colors sampled from the photo: the sampled background covers the original glyphs, and the translation is written on top at a size derived from the line height, shrinking to fit the original box.
+
+Recognized lines are merged into paragraphs by position before translation (translating line by line chops sentences apart): same column, line gap within one and a half lines, similar tilt, and **comparable type size** — a heading sits just one line-gap above its body text, so spacing alone merges them and the height ratio is what tells them apart. The two columns of a split menu never merge, because their horizontal projections don't overlap. Translation runs per deduplicated source text, concurrently — **recognition never waits on translation**: blocks appear immediately carrying the original, each translation fills in as it lands, and a block that fails retries on its own without holding up the page. A short string repeated across one photo costs a single request, and an in-process LRU cache carries results across shots.
+
+Tap any block to compare original and translation, then copy, speak it (in the target language's voice), or save it to history (sharing the same dedupe-and-insert path as the text tab). The flash button drives `AVCapturePhotoSettings.flashMode` and the exposure button `AVCaptureDevice.exposureMode`; the flash button is dimmed on devices without one. Changing the language pair re-translates the same photo instead of asking for a retake.
+
+Camera permission is requested lazily when the screen appears; if denied, the screen explains and offers “Open Settings”. When no camera is available (the Simulator included) no fake viewfinder is drawn — the screen points at the photo library and dims the shutter. Switching tabs or backgrounding the app stops the capture session.
 
 ### Languages, history & favorites
 
@@ -77,7 +83,7 @@ The settings sheet opens from the text tab's top-right corner. The translation m
 
 ## Status & roadmap
 
-Text translation uses Google's unofficial free endpoint (network access to Google services required); voice conversation is a real recognition + translation pipeline (see above); menu OCR currently runs on local demo data. The home-grown model and LLM-based translation engines are planned and appear as placeholders in Settings — the seam for a future streaming speech-translation engine is already left at the bottom of `Verto/Voice/AppleTranslationService.swift` (a `StreamingSpeechTranslating` protocol stub, attached at the voice-session layer rather than text→text).
+Text translation uses Google's unofficial free endpoint (network access to Google services required); voice conversation is a real recognition + translation pipeline (see above); camera translation is a real on-device Vision OCR + translation pipeline (see above). The home-grown model and LLM-based translation engines are planned and appear as placeholders in Settings — the seam for a future streaming speech-translation engine is already left at the bottom of `Verto/Voice/AppleTranslationService.swift` (a `StreamingSpeechTranslating` protocol stub, attached at the voice-session layer rather than text→text).
 
 ## Run in Xcode
 
@@ -105,13 +111,15 @@ xcodebuild \
 
 **Apple platform constraints, verified empirically**: neither SpeechTranscriber nor the Translation framework works on the iOS Simulator (no ANE, no translation models). The voice tab automatically drops to the SFSpeechRecognizer + Google fallback chain there, and as measured on the iOS 27 Simulator: **en-US cannot initialize because the system forces the local recognizer (kLSRErrorDomain 300 in both on-device and server modes), while zh-CN works fully via server-side recognition** — so speaking Chinese on the Simulator exercises the real “recognize → translate → speak” loop, while English is silently skipped by multi-track auto-detection (an English-only single track shows the notice “The simulator can't recognize this language. Test on a real device.”).
 
-Diagnostics can be re-run anytime via `VertoTests/SpeechAvailabilityProbeTests` (report written to /private/tmp/speech-availability-probe.txt). The SpeechAnalyzer path, system offline translation, language-model downloads, the `.lowLatency` strategy, dual-track behavior on device, and headphone detection can only be verified on real hardware. UI tests inject scripted recognition and silent TTS via `--uitest-canned-speech` and never touch real audio.
+The Simulator also has **no camera**: the viewfinder and shutter can only be verified on real hardware, and on the Simulator the camera screen shows “This device has no camera available” and promotes the photo-library entry point. **Vision text recognition does work on the Simulator** (measured: revision 3, 33 languages, all seven of `Language.all` supported), so picking a photo → OCR → translation → overlay works end to end there; re-run the diagnostic anytime via `VertoTests/VisionAvailabilityProbeTests` (report written to /private/tmp/vision-availability-probe.txt).
+
+Diagnostics can be re-run anytime via `VertoTests/SpeechAvailabilityProbeTests` (report written to /private/tmp/speech-availability-probe.txt). The SpeechAnalyzer path, system offline translation, language-model downloads, the `.lowLatency` strategy, dual-track behavior on device, and headphone detection can only be verified on real hardware. UI tests inject scripted recognition, silent TTS, and synthetic capture via `--uitest-canned-speech` and `--uitest-canned-camera`, never touching real audio or the camera.
 
 ## Automated tests
 
-The project ships a `VertoUITests` UI-test target whose acceptance flows cover text translation and favoriting, language search and selection, the full voice flow (idle → listening → finalized bubble → pause), voice playback-mode selection in Settings, camera recognition results, native-TabView cross-tab switching / selection sync / state retention, “draft → Done & Translate → restored result view”, and the DEBUG “Reduce Motion” end-state regression.
+The project ships a `VertoUITests` UI-test target whose acceptance flows cover text translation and favoriting, language search and selection, the full voice flow (idle → listening → finalized bubble → pause), voice playback-mode selection in Settings, the full camera flow (shutter → in-place translation overlay → tap for the comparison → save to history), native-TabView cross-tab switching / selection sync / state retention, “draft → Done & Translate → restored result view”, and the DEBUG “Reduce Motion” end-state regression.
 
-UI tests uniformly launch with `--uitest-canned-translation`, `--uitest-canned-speech`, and `--uitest-reset-settings`: the first two inject fixed demo translations and scripted speech recognition (no real network, microphone, or TTS), the last resets persisted preferences so assertions stay stable.
+UI tests uniformly launch with `--uitest-canned-translation`, `--uitest-canned-speech`, `--uitest-canned-camera`, and `--uitest-reset-settings`: the first three inject fixed demo translations, scripted speech recognition, and synthetic capture + recognition (no real network, microphone, TTS, or camera), the last resets persisted preferences so assertions stay stable. The synthetic sign's rendering and its “recognized” text blocks share one set of line data, so the overlay lands exactly where the glyphs were drawn.
 
 The UI is localized, and tests run pinned to Simplified Chinese: the shared scheme's Test action sets `zh-Hans` (covering the unit tests hosted in the app), and the UI tests additionally pass `-AppleLanguages` explicitly, so the Chinese copy assertions don't depend on the simulator language; `LocalizationTests` plus an English-UI smoke test cover resource completeness and real loading per language.
 
