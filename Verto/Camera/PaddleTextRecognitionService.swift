@@ -68,28 +68,70 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         }
     }
 
-    /// 把模型输出的 `MLMultiArray` 拷成 `[Float]`，并**先验数据类型再动指针**。
+    /// 把模型输出的 `MLMultiArray` 拷成稠密行优先的 `[Float]`。
     ///
-    /// 这不是防御性编程的洁癖：转换脚本一旦漏掉显式的 float32 输出声明，
-    /// coremltools 会跟随 fp16 计算精度把输出也标成 float16，而按 float32
-    /// 去读那块缓冲就是读两倍长度——直接崩进程，且崩在 Core ML 内部，
-    /// 堆栈完全看不出是自己越界。这里宁可抛错也不要再崩一次。
-    private static func floats(from array: MLMultiArray, count: Int) throws -> [Float] {
-        guard array.count >= count else { throw TextRecognitionError.recognitionFailed }
+    /// **必须走 `strides`，不能把缓冲当成连续行优先直接读。** `MLMultiArray`
+    /// 不保证连续：神经引擎会把最后一维补齐到 16 的倍数。识别模型输出
+    /// `[1, 80, 18710]`，在 ANE 上 strides 是 `[1497600, 18720, 1]`——
+    /// 类别维被补到 18720。按 18710 的间距读，第 t 个时间步就偏 `t×10` 个元素，
+    /// 越往后越离谱，最后落进补齐区。症状是识别结果变成散落在字表各处的乱码
+    /// 加一长串重复字符，而 CPU/GPU 上 strides 恰好是连续的，
+    /// **模拟器完全复现不出来**（模拟器没有神经引擎）。这个坑真机上踩过。
+    ///
+    /// 顺带仍然先验数据类型：转换脚本漏掉显式 float32 输出声明时，
+    /// coremltools 会跟随 fp16 计算精度把输出标成 float16，按 float32 读
+    /// 就是读两倍长度，直接崩在 Core ML 内部、堆栈看不出是自己越界。
+    /// 非 private：`PaddleOCRProbeTests` 要直接喂一个带补齐步长的张量来钉这条规则，
+    /// 而真机上才出现的布局在模拟器里造不出来。
+    static func denseFloats(from array: MLMultiArray) throws -> [Float] {
+        let shape = array.shape.map(\.intValue)
+        let strides = array.strides.map(\.intValue)
+        guard !shape.isEmpty, shape.count == strides.count,
+              let rowLength = shape.last, rowLength > 0,
+              strides.last == 1 else {
+            // 最内维步长不为 1 的布局本工程没见过，与其猜着读不如明确失败。
+            throw TextRecognitionError.recognitionFailed
+        }
+        let total = shape.reduce(1, *)
+        let rowCount = total / rowLength
+
+        /// 第 r 行在源缓冲里的起点：把 r 按前几维的形状拆开，各维乘自己的 stride。
+        func rowOffset(_ r: Int) -> Int {
+            var remainder = r, offset = 0
+            for dimension in stride(from: shape.count - 2, through: 0, by: -1) {
+                let size = shape[dimension]
+                guard size > 0 else { continue }
+                offset += (remainder % size) * strides[dimension]
+                remainder /= size
+            }
+            return offset
+        }
+
+        var out = [Float](repeating: 0, count: total)
         switch array.dataType {
         case .float32:
-            return array.withUnsafeMutableBytes { raw, _ in
-                guard let base = raw.bindMemory(to: Float.self).baseAddress else { return [] }
-                return [Float](UnsafeBufferPointer(start: base, count: count))
+            array.withUnsafeMutableBytes { raw, _ in
+                guard let base = raw.bindMemory(to: Float.self).baseAddress else { return }
+                out.withUnsafeMutableBufferPointer { destination in
+                    guard let target = destination.baseAddress else { return }
+                    for r in 0..<rowCount {
+                        // 最内维连续，整行 memcpy；补齐出来的空档自然被跳过。
+                        (target + r * rowLength).update(from: base + rowOffset(r), count: rowLength)
+                    }
+                }
             }
         case .float16:
-            return array.withUnsafeMutableBytes { raw, _ in
-                guard let base = raw.bindMemory(to: Float16.self).baseAddress else { return [] }
-                return UnsafeBufferPointer(start: base, count: count).map(Float.init)
+            array.withUnsafeMutableBytes { raw, _ in
+                guard let base = raw.bindMemory(to: Float16.self).baseAddress else { return }
+                for r in 0..<rowCount {
+                    let source = base + rowOffset(r)
+                    for c in 0..<rowLength { out[r * rowLength + c] = Float(source[c]) }
+                }
             }
         default:
             throw TextRecognitionError.recognitionFailed
         }
+        return out
     }
 
     func recognizeText(
@@ -144,7 +186,8 @@ final class PaddleTextRecognitionService: TextRecognitionService {
             throw TextRecognitionError.recognitionFailed
         }
 
-        let values = try Self.floats(from: probabilities, count: side * side)
+        let values = try Self.denseFloats(from: probabilities)
+        guard values.count >= side * side else { throw TextRecognitionError.recognitionFailed }
 
         return TextDetectionPostProcess.boxes(
             probabilities: values, width: side, height: side,
@@ -178,7 +221,8 @@ final class PaddleTextRecognitionService: TextRecognitionService {
 
         let steps = logits.shape[1].intValue
         let classes = logits.shape[2].intValue
-        let values = try Self.floats(from: logits, count: steps * classes)
+        let values = try Self.denseFloats(from: logits)
+        guard values.count >= steps * classes else { throw TextRecognitionError.recognitionFailed }
 
         // 只解码有效宽度对应的时间步。补白区也会产出预测，一起解码会在行尾
         // 拖出一串重复字符。时间步与输入宽度成正比（模型内部固定下采样 8 倍）。

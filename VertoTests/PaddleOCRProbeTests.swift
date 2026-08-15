@@ -135,6 +135,36 @@ final class PaddleOCRProbeTests: XCTestCase {
         XCTAssertFalse(RoutingTextRecognitionService.canUseHighAccuracy(tier: .medium, languages: []))
     }
 
+    /// 读取模型输出时必须走 `strides`，不能把缓冲当连续行优先。
+    ///
+    /// 这条规则只在**有神经引擎的真机**上会被违反：ANE 把识别模型输出的类别维
+    /// 从 18710 补齐到 18720，而 CPU/GPU 上恰好是连续的。所以模拟器上跑真模型
+    /// 永远测不出来，必须手工造一个带补齐步长的张量把规则钉死。
+    /// 违反时的症状是识别结果变成散落在字表各处的乱码——真机上出现过。
+    func testDenseFloatsRespectsPaddedStrides() throws {
+        let rows = 3, used = 5, padded = 8      // 每行 5 个有效值，补齐到 8
+        let sentinel: Float = -999              // 落进补齐区就会读到它
+        let storage = UnsafeMutablePointer<Float>.allocate(capacity: rows * padded)
+        defer { storage.deallocate() }
+        for r in 0..<rows {
+            for c in 0..<padded {
+                storage[r * padded + c] = c < used ? Float(r * 10 + c) : sentinel
+            }
+        }
+
+        let array = try MLMultiArray(
+            dataPointer: storage,
+            shape: [1, NSNumber(value: rows), NSNumber(value: used)],
+            dataType: .float32,
+            strides: [NSNumber(value: rows * padded), NSNumber(value: padded), 1]
+        )
+
+        let dense = try PaddleTextRecognitionService.denseFloats(from: array)
+        XCTAssertEqual(dense, [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 20, 21, 22, 23, 24],
+                       "补齐步长没被尊重——按连续布局读会把后面每一行都读偏")
+        XCTAssertFalse(dense.contains(sentinel), "读到了补齐区的填充值")
+    }
+
     // MARK: - 辅助
 
     private static func compile(from root: URL) async throws -> InstalledOCRModel {
