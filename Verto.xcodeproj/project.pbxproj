@@ -22,6 +22,7 @@
 		01A000000000000000000113 /* GoogleTranslateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000014 /* GoogleTranslateService.swift */; };
 		01A000000000000000000114 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000015 /* AppSettings.swift */; };
 		01A000000000000000000115 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* SettingsView.swift */; };
+		01A000000000000000000515 /* OCRModelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000415 /* OCRModelSection.swift */; };
 		01A000000000000000000116 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000017 /* AppIcon.icon */; };
 		01A000000000000000000117 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000018 /* Localizable.xcstrings */; };
 		01A000000000000000000118 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000019 /* InfoPlist.xcstrings */; };
@@ -38,6 +39,14 @@
 		01A000000000000000000503 /* PhotoCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000403 /* PhotoCaptureSource.swift */; };
 		01A000000000000000000504 /* CannedPhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000404 /* CannedPhotoCapture.swift */; };
 		01A000000000000000000505 /* PhotoTranslationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000405 /* PhotoTranslationController.swift */; };
+		01A000000000000000000507 /* TextDetectionPostProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000407 /* TextDetectionPostProcess.swift */; };
+		01A000000000000000000508 /* CTCDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000408 /* CTCDecoder.swift */; };
+		01A000000000000000000509 /* OCRModelPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000409 /* OCRModelPack.swift */; };
+		01A000000000000000000510 /* OCRModelPackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000410 /* OCRModelPackStore.swift */; };
+		01A000000000000000000511 /* OCRModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000411 /* OCRModelCatalog.swift */; };
+		01A000000000000000000512 /* OCRImageCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000412 /* OCRImageCanvas.swift */; };
+		01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000413 /* PaddleTextRecognitionService.swift */; };
+		01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000414 /* RoutingTextRecognitionService.swift */; };
 		01A000000000000000000506 /* TranslationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000406 /* TranslationOverlay.swift */; };
 		01B000000000000000000101 /* VertoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B000000000000000000001 /* VertoUITests.swift */; };
 		01C000000000000000000101 /* TranslationSessionDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000001 /* TranslationSessionDraftTests.swift */; };
@@ -51,6 +60,7 @@
 		01C000000000000000000109 /* PhotoTranslationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000009 /* PhotoTranslationControllerTests.swift */; };
 		01C000000000000000000110 /* TextBlockGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000010 /* TextBlockGeometryTests.swift */; };
 		01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */; };
+		01C000000000000000000112 /* PaddleOCRProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000013 /* PaddleOCRProbeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,6 +97,7 @@
 		01A000000000000000000014 /* GoogleTranslateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleTranslateService.swift; sourceTree = "<group>"; };
 		01A000000000000000000015 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		01A000000000000000000016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		01A000000000000000000415 /* OCRModelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelSection.swift; sourceTree = "<group>"; };
 		01A000000000000000000017 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		01A000000000000000000018 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		01A000000000000000000019 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
@@ -103,6 +114,14 @@
 		01A000000000000000000403 /* PhotoCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureSource.swift; sourceTree = "<group>"; };
 		01A000000000000000000404 /* CannedPhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CannedPhotoCapture.swift; sourceTree = "<group>"; };
 		01A000000000000000000405 /* PhotoTranslationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTranslationController.swift; sourceTree = "<group>"; };
+		01A000000000000000000407 /* TextDetectionPostProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDetectionPostProcess.swift; sourceTree = "<group>"; };
+		01A000000000000000000408 /* CTCDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTCDecoder.swift; sourceTree = "<group>"; };
+		01A000000000000000000409 /* OCRModelPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelPack.swift; sourceTree = "<group>"; };
+		01A000000000000000000410 /* OCRModelPackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelPackStore.swift; sourceTree = "<group>"; };
+		01A000000000000000000411 /* OCRModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelCatalog.swift; sourceTree = "<group>"; };
+		01A000000000000000000412 /* OCRImageCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvas.swift; sourceTree = "<group>"; };
+		01A000000000000000000413 /* PaddleTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleTextRecognitionService.swift; sourceTree = "<group>"; };
+		01A000000000000000000414 /* RoutingTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingTextRecognitionService.swift; sourceTree = "<group>"; };
 		01A000000000000000000406 /* TranslationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationOverlay.swift; sourceTree = "<group>"; };
 		01B000000000000000000001 /* VertoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VertoUITests.swift; sourceTree = "<group>"; };
 		01B000000000000000000011 /* VertoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -117,6 +136,7 @@
 		01C000000000000000000009 /* PhotoTranslationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoTranslationControllerTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000010 /* TextBlockGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextBlockGeometryTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionAvailabilityProbeTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000013 /* PaddleOCRProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRProbeTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000011 /* VertoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -196,6 +216,7 @@
 				01A000000000000000000009 /* LanguagePickerView.swift */,
 				01A000000000000000000010 /* HistoryView.swift */,
 				01A000000000000000000016 /* SettingsView.swift */,
+				01A000000000000000000415 /* OCRModelSection.swift */,
 			);
 			path = Screens;
 			sourceTree = "<group>";
@@ -220,6 +241,14 @@
 			children = (
 				01A000000000000000000401 /* TextRecognition.swift */,
 				01A000000000000000000405 /* PhotoTranslationController.swift */,
+				01A000000000000000000407 /* TextDetectionPostProcess.swift */,
+				01A000000000000000000408 /* CTCDecoder.swift */,
+				01A000000000000000000409 /* OCRModelPack.swift */,
+				01A000000000000000000410 /* OCRModelPackStore.swift */,
+				01A000000000000000000411 /* OCRModelCatalog.swift */,
+				01A000000000000000000412 /* OCRImageCanvas.swift */,
+				01A000000000000000000413 /* PaddleTextRecognitionService.swift */,
+				01A000000000000000000414 /* RoutingTextRecognitionService.swift */,
 				01A000000000000000000402 /* VisionTextRecognitionService.swift */,
 				01A000000000000000000403 /* PhotoCaptureSource.swift */,
 				01A000000000000000000404 /* CannedPhotoCapture.swift */,
@@ -250,6 +279,7 @@
 				01C000000000000000000009 /* PhotoTranslationControllerTests.swift */,
 				01C000000000000000000010 /* TextBlockGeometryTests.swift */,
 				01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */,
+				01C000000000000000000013 /* PaddleOCRProbeTests.swift */,
 			);
 			path = VertoTests;
 			sourceTree = "<group>";
@@ -404,6 +434,7 @@
 				01A000000000000000000113 /* GoogleTranslateService.swift in Sources */,
 				01A000000000000000000114 /* AppSettings.swift in Sources */,
 				01A000000000000000000115 /* SettingsView.swift in Sources */,
+				01A000000000000000000515 /* OCRModelSection.swift in Sources */,
 				01A000000000000000000301 /* VoiceTranscription.swift in Sources */,
 				01A000000000000000000302 /* MicrophoneAudioSource.swift in Sources */,
 				01A000000000000000000303 /* SFSpeechTranscriptionService.swift in Sources */,
@@ -417,6 +448,14 @@
 				01A000000000000000000503 /* PhotoCaptureSource.swift in Sources */,
 				01A000000000000000000504 /* CannedPhotoCapture.swift in Sources */,
 				01A000000000000000000505 /* PhotoTranslationController.swift in Sources */,
+				01A000000000000000000507 /* TextDetectionPostProcess.swift in Sources */,
+				01A000000000000000000508 /* CTCDecoder.swift in Sources */,
+				01A000000000000000000509 /* OCRModelPack.swift in Sources */,
+				01A000000000000000000510 /* OCRModelPackStore.swift in Sources */,
+				01A000000000000000000511 /* OCRModelCatalog.swift in Sources */,
+				01A000000000000000000512 /* OCRImageCanvas.swift in Sources */,
+				01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */,
+				01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */,
 				01A000000000000000000506 /* TranslationOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -444,6 +483,7 @@
 				01C000000000000000000109 /* PhotoTranslationControllerTests.swift in Sources */,
 				01C000000000000000000110 /* TextBlockGeometryTests.swift in Sources */,
 				01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */,
+				01C000000000000000000112 /* PaddleOCRProbeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -56,6 +56,18 @@ Incoming calls, backgrounding, and tab switches all stop capture; the conversati
 ### Camera translation
 
 Aim at the text and press the shutter (or pick from the library). Vision runs on-device OCR over the whole frame and **the translation is laid back over the original, in place** — positioned from the recognized quadrilateral, rotated to the original's tilt, with background and text colors sampled from the photo: the sampled background covers the original glyphs, and the translation is written on top at a size derived from the line height, shrinking to fit the original box.
+**Two recognition engines.** The system's Vision (`VNRecognizeTextRequest` revision 3) is the default; once a high-accuracy model pack is installed, PP-OCRv6 takes over (converted to Core ML — two stages: DB detects a rotated box per text line, CTC reads each line). The packs are not part of the IPA: the first visit to the camera screen fetches one in the background, the system engine keeps working meanwhile, and the switch happens on its own once the download lands. Settings lets you switch between three tiers or delete them and fall back to the system engine:
+
+| Tier | Download | Accuracy | Scripts |
+|---|---|---|---|
+| Lightweight | 2.8 MB | 73.5 | Chinese, Latin (no Japanese kana) |
+| Balanced (default) | 12.4 MB | 81.3 | Chinese, Japanese, Latin, Greek |
+| Highest accuracy | 45.3 MB | 83.2 | same as Balanced |
+
+Accuracy is the weighted average over PaddleOCR's official 16-category real-photo benchmark; on the same benchmark PP-OCRv5_mobile scores 73.7, Gemini-3.1-Pro 71.4 and GPT-5.5 64.2. Measured recognition time on a Mac is 10 / 33 / 58 ms respectively (18-line menu, detection included) — the difference is imperceptible, so the real trade-off is download size.
+
+**None of the three PP-OCRv6 tiers carry Hangul in their character set**, so Korean is always handed back to the system engine; the lightweight tier is also missing Japanese kana, so Japanese falls back there too. That routing lives in `RoutingTextRecognitionService`, which also falls back when the model fails to load or throws — high-accuracy recognition is an enhancement, never a prerequisite, and the camera screen stays usable without it.
+
 
 Recognized lines are merged into paragraphs by position before translation (translating line by line chops sentences apart): same column, line gap within one and a half lines, similar tilt, and **comparable type size** — a heading sits just one line-gap above its body text, so spacing alone merges them and the height ratio is what tells them apart. The two columns of a split menu never merge, because their horizontal projections don't overlap. Translation runs per deduplicated source text, concurrently — **recognition never waits on translation**: blocks appear immediately carrying the original, each translation fills in as it lands, and a block that fails retries on its own without holding up the page. A short string repeated across one photo costs a single request, and an in-process LRU cache carries results across shots.
 

@@ -56,6 +56,18 @@ Las llamadas entrantes, pasar a segundo plano y cambiar de pestaña detienen la 
 ### Traducción con cámara
 
 Apunta al texto y pulsa el obturador (o elige una foto de la fototeca). Vision ejecuta OCR en el dispositivo sobre todo el encuadre y **la traducción se superpone justo donde estaba el original**: se posiciona a partir del cuadrilátero reconocido, gira con la inclinación del original y toma los colores de fondo y de texto muestreados de la propia foto — el fondo muestreado tapa los glifos originales y encima se escribe la traducción, con un tamaño derivado de la altura de línea que se encoge hasta caber en el recuadro original.
+**Dos motores de reconocimiento.** Por defecto se usa Vision del sistema (`VNRecognizeTextRequest` revisión 3); en cuanto se instala un paquete de modelo de alta precisión, toma el relevo PP-OCRv6 (convertido a Core ML, en dos etapas: DB detecta un recuadro rotado por línea y CTC lee cada línea). Los paquetes no forman parte del IPA: la primera visita a la pantalla de cámara descarga uno en segundo plano, el motor del sistema sigue funcionando mientras tanto y el cambio ocurre solo cuando la descarga termina. En Ajustes se puede alternar entre tres niveles o borrarlos y volver al motor del sistema:
+
+| Nivel | Descarga | Precisión | Escrituras |
+|---|---|---|---|
+| Ligero | 2,8 MB | 73,5 | chino, latino (sin kana japonés) |
+| Equilibrado (predeterminado) | 12,4 MB | 81,3 | chino, japonés, latino, griego |
+| Máxima precisión | 45,3 MB | 83,2 | igual que Equilibrado |
+
+La precisión es la media ponderada del banco de pruebas oficial de PaddleOCR sobre 16 categorías de fotos reales; en ese mismo banco PP-OCRv5_mobile obtiene 73,7, Gemini-3.1-Pro 71,4 y GPT-5.5 64,2. El tiempo de reconocimiento medido en un Mac es de 10 / 33 / 58 ms respectivamente (menú de 18 líneas, detección incluida): la diferencia no se percibe, así que el criterio real es el tamaño de la descarga.
+
+**Ninguno de los tres niveles de PP-OCRv6 incluye hangul en su tabla de caracteres**, por lo que el coreano siempre vuelve al motor del sistema; al nivel ligero le faltan además los kana japoneses, así que ahí el japonés también recae en el sistema. Ese enrutado vive en `RoutingTextRecognitionService`, que igualmente recurre al sistema si el modelo no carga o falla — el reconocimiento de alta precisión es una mejora, nunca un requisito, y la pantalla de cámara sigue siendo utilizable sin él.
+
 
 Las líneas reconocidas se agrupan en párrafos por posición antes de traducir (traducir línea a línea trocea las frases): misma columna, separación de menos de línea y media, inclinación parecida y **tamaño de letra comparable**: un titular queda a solo un interlineado de su texto de cuerpo, así que la separación por sí sola los fusiona y es la proporción de alturas la que los distingue. Las dos columnas de un menú a doble columna nunca se fusionan, porque sus proyecciones horizontales no se solapan. La traducción se lanza por texto de origen deduplicado y en paralelo — **el reconocimiento nunca espera a la traducción**: los bloques aparecen enseguida con el original, cada traducción se rellena al llegar y un bloque que falla se reintenta solo sin bloquear la página. Una cadena corta repetida en la misma foto cuesta una única petición, y una caché LRU en proceso reutiliza los resultados entre tomas.
 

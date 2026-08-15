@@ -76,7 +76,11 @@ final class PhotoTranslationController {
     let captureSource: any PhotoCaptureSource
 
     private let settings: AppSettings
-    private let recognizer: any TextRecognitionService
+    /// 兜底识别器（默认是系统 Vision）。装了高精度模型时它退居为回落项——
+    /// 韩语等模型盖不住的语言、以及模型加载失败时仍然走它。
+    private let systemRecognizer: any TextRecognitionService
+    /// 高精度模型的安装状态。为 nil 表示这一路完全不启用（UI 测试的罐头路径）。
+    private let modelCatalog: OCRModelCatalog?
     private let translationService: (any TranslationService)?
     private let synthesizer: any SpeechSynthesizing
     private let cache = TranslationMemoryCache()
@@ -94,12 +98,14 @@ final class PhotoTranslationController {
         settings: AppSettings,
         captureSource: any PhotoCaptureSource,
         recognizer: any TextRecognitionService,
+        modelCatalog: OCRModelCatalog? = nil,
         translationService: (any TranslationService)? = nil,
         synthesizer: (any SpeechSynthesizing)? = nil
     ) {
         self.settings = settings
         self.captureSource = captureSource
-        self.recognizer = recognizer
+        self.systemRecognizer = recognizer
+        self.modelCatalog = modelCatalog
         self.translationService = translationService
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
     }
@@ -257,7 +263,9 @@ final class PhotoTranslationController {
         }
         phase = .recognizing
 
-        let recognizer = recognizer
+        // 每次拍照重新解析识别器：模型可能刚下载完，也可能刚被用户删掉。
+        // catalog 内部按 activeModel 缓存，重复解析不会反复加载 Core ML 模型。
+        let recognizer = modelCatalog?.makeRecognizer(system: systemRecognizer) ?? systemRecognizer
         let languages = recognitionLanguages
         do {
             let recognized = try await recognizer.recognizeText(in: cgImage, languages: languages)

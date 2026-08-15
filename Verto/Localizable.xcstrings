@@ -378,6 +378,41 @@
         }
       }
     },
+    "下载模型" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download model"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargar modelo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルをダウンロード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델 다운로드"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下载模型"
+          }
+        }
+      }
+    },
     "不自动播放语音" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -938,6 +973,41 @@
         }
       }
     },
+    "最高精度" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Highest accuracy"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máxima precisión"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高精度"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최고 정확도"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高精度"
+          }
+        }
+      }
+    },
     "分享译文" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -969,6 +1039,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享译文"
+          }
+        }
+      }
+    },
+    "删除模型" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete model"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar modelo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルを削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델 삭제"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除模型"
           }
         }
       }
@@ -1148,6 +1253,41 @@
         }
       }
     },
+    "取消下载" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel download"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar descarga"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードをキャンセル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다운로드 취소"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消下载"
+          }
+        }
+      }
+    },
     "取消收藏" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1214,6 +1354,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可按语言名称或语言代码搜索"
+          }
+        }
+      }
+    },
+    "均衡" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balanced"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equilibrado"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バランス"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "균형"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "均衡"
           }
         }
       }
@@ -1354,6 +1529,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "始终使用深色外观"
+          }
+        }
+      }
+    },
+    "存储空间不足，请清理后重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough storage. Free up some space and try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay espacio suficiente. Libera espacio e inténtalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空き容量が足りません。整理してからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장 공간이 부족합니다. 공간을 확보한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储空间不足，请清理后重试"
           }
         }
       }
@@ -1529,6 +1739,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "对话翻译"
+          }
+        }
+      }
+    },
+    "已下载 %@ · 准确率 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloaded %@ · Accuracy %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargado %@ · Precisión %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済み %@ · 精度 %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다운로드됨 %@ · 정확도 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下载 %@ · 准确率 %@"
           }
         }
       }
@@ -2093,6 +2338,76 @@
         }
       }
     },
+    "拍照识别引擎" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo recognition engine"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Motor de reconocimiento de fotos"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真認識エンジン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진 인식 엔진"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍照识别引擎"
+          }
+        }
+      }
+    },
+    "推荐" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recommended"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recomendado"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "おすすめ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추천"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推荐"
+          }
+        }
+      }
+    },
     "提交当前文字并返回翻译结果" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2583,6 +2898,41 @@
         }
       }
     },
+    "未下载时使用系统识别引擎。韩语始终由系统引擎识别。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The system engine is used when no model is downloaded. Korean is always recognized by the system engine."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se usa el motor del sistema cuando no hay ningún modelo descargado. El coreano siempre se reconoce con el motor del sistema."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデル未ダウンロード時はシステムのエンジンを使います。韓国語は常にシステムのエンジンで認識します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델을 내려받지 않았을 때는 시스템 엔진을 사용합니다. 한국어는 항상 시스템 엔진으로 인식합니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未下载时使用系统识别引擎。韩语始终由系统引擎识别。"
+          }
+        }
+      }
+    },
     "未找到语言" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2758,6 +3108,111 @@
         }
       }
     },
+    "模型下载失败，请检查网络后重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model download failed. Check your connection and try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error al descargar el modelo. Comprueba tu conexión e inténtalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルのダウンロードに失敗しました。通信環境を確認してもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델 다운로드에 실패했습니다. 네트워크를 확인한 후 다시 시도하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型下载失败，请检查网络后重试"
+          }
+        }
+      }
+    },
+    "模型安装失败，请重新下载" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model installation failed. Please download it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error al instalar el modelo. Descárgalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルのインストールに失敗しました。もう一度ダウンロードしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델 설치에 실패했습니다. 다시 다운로드하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型安装失败，请重新下载"
+          }
+        }
+      }
+    },
+    "模型文件校验未通过，请重新下载" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The model file failed verification. Please download it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El archivo del modelo no superó la verificación. Descárgalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデルファイルの検証に失敗しました。もう一度ダウンロードしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모델 파일 검증에 실패했습니다. 다시 다운로드하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型文件校验未通过，请重新下载"
+          }
+        }
+      }
+    },
     "模拟器暂不支持这种语言的识别，请在真机上测试" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2789,6 +3244,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "模拟器暂不支持这种语言的识别，请在真机上测试"
+          }
+        }
+      }
+    },
+    "正在下载 %lld%%" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloading %lld%%"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargando %lld%%"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード中 %lld%%"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다운로드 중 %lld%%"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在下载 %lld%%"
           }
         }
       }
@@ -2929,6 +3419,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在听写…"
+          }
+        }
+      }
+    },
+    "正在安装" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installing"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalando"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストール中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설치 중"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在安装"
           }
         }
       }
@@ -3629,6 +4154,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "简体中文"
+          }
+        }
+      }
+    },
+    "精度越高模型越大，识别耗时差异在几十毫秒内，基本感觉不到。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Higher accuracy means a larger model. The difference in recognition time is a few tens of milliseconds and is barely noticeable."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mayor precisión implica un modelo más grande. La diferencia de tiempo de reconocimiento es de unas decenas de milisegundos y apenas se nota."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "精度が高いほどモデルは大きくなります。認識時間の差は数十ミリ秒で、ほとんど体感できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정확도가 높을수록 모델이 커집니다. 인식 시간 차이는 수십 밀리초로 거의 느껴지지 않습니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "精度越高模型越大，识别耗时差异在几十毫秒内，基本感觉不到。"
           }
         }
       }
@@ -4364,6 +4924,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置"
+          }
+        }
+      }
+    },
+    "识别模型文件损坏，请重新下载" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recognition model file is damaged. Please download it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El archivo del modelo de reconocimiento está dañado. Descárgalo de nuevo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認識モデルのファイルが破損しています。もう一度ダウンロードしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인식 모델 파일이 손상되었습니다. 다시 다운로드하세요."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "识别模型文件损坏，请重新下载"
           }
         }
       }
@@ -5138,6 +5733,76 @@
         }
       }
     },
+    "轻量" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lightweight"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "軽量"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경량"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻量"
+          }
+        }
+      }
+    },
+    "轻量档不支持日文，日文会自动交给系统引擎。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The lightweight model does not support Japanese; Japanese falls back to the system engine."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modelo ligero no admite japonés; el japonés se procesa con el motor del sistema."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "軽量モデルは日本語に対応していないため、日本語はシステムのエンジンで認識します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경량 모델은 일본어를 지원하지 않아 일본어는 시스템 엔진으로 인식합니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻量档不支持日文，日文会自动交给系统引擎。"
+          }
+        }
+      }
+    },
     "载入翻译：%@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5554,6 +6219,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "闪光灯"
+          }
+        }
+      }
+    },
+    "需下载 %@ · 准确率 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ download · Accuracy %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga de %@ · Precisión %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ のダウンロードが必要 · 精度 %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 다운로드 필요 · 정확도 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需下载 %@ · 准确率 %@"
           }
         }
       }

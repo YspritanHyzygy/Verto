@@ -19,12 +19,18 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var settings: AppSettings
+    /// 高精度识别模型的安装状态。为 nil 时整节不显示——UI 测试的罐头相机路径
+    /// 不接这一路，没有可管理的模型。
+    var ocrModelCatalog: OCRModelCatalog?
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Form {
                 engineSection
+                if let ocrModelCatalog {
+                    OCRModelSection(catalog: ocrModelCatalog)
+                }
                 voicePlaybackSection
                 preferenceSection
                 appearanceSection

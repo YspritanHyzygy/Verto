@@ -55,7 +55,19 @@
 
 ### 相机翻译
 
-对准文字按快门（或从相册选图），Vision 端侧 OCR 识别整幅画面，**译文就地叠加回原文所在的位置**——按识别出的四边形定位、跟随原文倾角旋转、底色与字色从原图采样，用采样到的底色盖掉原文再写上译文，字号按行高起算并自适应收缩塞进原框。
+对准文字按快门（或从相册选图），端侧 OCR 识别整幅画面，**译文就地叠加回原文所在的位置**——按识别出的四边形定位、跟随原文倾角旋转、底色与字色从原图采样，用采样到的底色盖掉原文再写上译文，字号按行高起算并自适应收缩塞进原框。
+
+**两套识别引擎**。默认是系统的 Vision（`VNRecognizeTextRequest` revision 3），装了高精度模型包后改用 PP-OCRv6（转成 Core ML，两段式：DB 检测出每行的旋转框，CTC 识别逐行读字）。模型包不进 IPA，首次进相机页在后台下载，没下完的这段时间照常用系统引擎，下完自动切换。设置页可在三档间切换，也可以删掉退回系统引擎：
+
+| 档位 | 下载体积 | 准确率 | 覆盖文字 |
+|---|---|---|---|
+| 轻量 | 2.8 MB | 73.5 | 中文、拉丁（无日文假名） |
+| 均衡（默认） | 12.4 MB | 81.3 | 中文、日文、拉丁、希腊 |
+| 最高精度 | 45.3 MB | 83.2 | 同均衡 |
+
+准确率取自 PaddleOCR 官方 16 类真实照片基准的加权平均；同一基准上 PP-OCRv5_mobile 为 73.7、Gemini-3.1-Pro 71.4、GPT-5.5 64.2。三档的识别耗时在 Mac 上实测为 10 / 33 / 58 毫秒（18 行菜单，含检测），差异感知不到，真正的取舍是下载体积。
+
+**PP-OCRv6 三档的字表里都没有谚文**，所以韩语始终交回系统引擎识别；轻量档另外缺日文假名，日文在该档也走系统引擎。这个分流在 `RoutingTextRecognitionService` 里，模型加载失败或识别抛错时同样回落——高精度识别是增强而不是前提，任何一环缺失都不影响相机页可用。
 
 识别出的行按位置合并成段落再整段送翻译（逐行翻译会把一句话切碎）：同栏、行距在一行半以内、倾角相近、**字号相当**才算同段——标题与紧邻正文只差一行间距，光看间距会被并成一段，字号之比才是判据；分栏菜单的左右两列因水平投影零重叠而不会被并到一起。翻译按去重后的原文逐块并发，**识别不等翻译**——块先带原文上屏，译文到一块填一块，单块失败只在该块内重试，不拖垮整页；同一张图里重复出现的短句只发一次请求，跨轮复用进程内 LRU 缓存。
 
@@ -83,7 +95,7 @@
 
 ## 现状与路线
 
-文字翻译已接入谷歌翻译非官方免费接口（需要能够访问谷歌服务的网络环境）；语音对话为真实语音识别与翻译管线（见上）；相机翻译为真实的 Vision 端侧 OCR + 翻译管线（见上）。自研模型与基于 LLM 的翻译引擎为后续计划，暂以占位形式出现在设置页——未来流式语音翻译引擎的接缝已留在 `Verto/Voice/AppleTranslationService.swift` 底部（`StreamingSpeechTranslating` 协议桩，挂在语音会话层而非 text→text 层）。
+文字翻译已接入谷歌翻译非官方免费接口（需要能够访问谷歌服务的网络环境）；语音对话为真实语音识别与翻译管线（见上）；相机翻译为真实的端侧 OCR + 翻译管线（系统 Vision 或下载后的 PP-OCRv6，见上）。自研模型与基于 LLM 的翻译引擎为后续计划，暂以占位形式出现在设置页——未来流式语音翻译引擎的接缝已留在 `Verto/Voice/AppleTranslationService.swift` 底部（`StreamingSpeechTranslating` 协议桩，挂在语音会话层而非 text→text 层）。
 
 ## 在 Xcode 中运行
 
@@ -111,7 +123,7 @@ xcodebuild \
 
 **苹果官方约束，已实测核实**：SpeechTranscriber 与 Translation 框架在 iOS 模拟器上都不可用（模拟器无 ANE、无翻译模型）。模拟器上语音页自动落到 SFSpeechRecognizer + 谷歌翻译回退链路，且实测（iOS 27 模拟器）：**en-US 因系统强制本地识别器而无法初始化（kLSRErrorDomain 300，端上/服务器模式都挂），zh-CN 走服务器识别完全可用**——所以模拟器上说中文可以真实走通「识别→翻译→朗读」，说英文会由多轨自动检测静默跳过失败轨（仅英文单轨时给出「模拟器暂不支持这种语言的识别」文案）。
 
-模拟器同样**没有摄像头**：相机页的取景与拍照只能在真机验证，模拟器上相机页显示“此设备没有可用的相机”并把相册入口提到主位。**Vision 文字识别在模拟器上可用**（已实测：revision 3、33 种语言，`Language.all` 七种全部支持），相册选图 → OCR → 翻译 → 叠加这条链路在模拟器上完整可用；诊断可随时重跑 `VertoTests/VisionAvailabilityProbeTests`（报告落盘 /private/tmp/vision-availability-probe.txt）。
+模拟器同样**没有摄像头**：相机页的取景与拍照只能在真机验证，模拟器上相机页显示“此设备没有可用的相机”并把相册入口提到主位。**两套文字识别在模拟器上都可用**：系统 Vision（已实测 revision 3、33 种语言，`Language.all` 七种全部支持）与 Core ML 版 PP-OCRv6 都能真跑，相册选图 → OCR → 翻译 → 叠加这条链路在模拟器上完整可用。两条诊断探针可随时重跑：`VertoTests/VisionAvailabilityProbeTests`（报告落盘 /private/tmp/vision-availability-probe.txt）与 `VertoTests/PaddleOCRProbeTests`（需先用 `tools/build-ocr-models` 产出模型，再以 `TEST_RUNNER_VERTO_OCR_MODEL_DIR=<某一档目录>` 指路；报告落盘 /private/tmp/paddle-ocr-probe.txt，未指路时跳过而不是假装通过）。
 
 诊断可随时重跑 `VertoTests/SpeechAvailabilityProbeTests`（报告落盘 /private/tmp/speech-availability-probe.txt）。SpeechAnalyzer 路径、系统离线翻译、语言模型下载、`.lowLatency` 策略、双轨真机表现与耳机检测只能在真机验证。UI 测试通过 `--uitest-canned-speech` 与 `--uitest-canned-camera` 注入脚本化识别、静音 TTS 与合成拍照，全程不碰真实音频与相机。
 

@@ -23,6 +23,9 @@ struct AppShell: View {
     @State private var session: TranslationSession
     @State private var voiceController: VoiceConversationController
     @State private var photoController: PhotoTranslationController
+    /// 高精度识别模型的安装状态。挂在 shell 上而不是相机页：下载会跨越标签页切换，
+    /// 状态放在页面上会随页面销毁而丢失。
+    @State private var modelCatalog: OCRModelCatalog?
     @State private var appleTranslationProvider: AppleTranslationProvider
     @State private var sheetDestination: SheetDestination?
     private let usesDemoData: Bool
@@ -70,6 +73,9 @@ struct AppShell: View {
 
         let captureSource: any PhotoCaptureSource
         let recognizer: any TextRecognitionService
+        // 罐头相机路径下不接 catalog：那条路一行真实模型代码都不碰，
+        // 接进去只会让 UI 测试莫名其妙地去下载 13MB。
+        var catalog: OCRModelCatalog?
 #if DEBUG
         if configuration.useCannedCamera {
             // 模拟器无摄像头、UI 测试也开不了系统相册选择器：整条采集+识别链走合成实现，
@@ -79,15 +85,19 @@ struct AppShell: View {
         } else {
             captureSource = CameraCaptureSource()
             recognizer = VisionTextRecognitionService()
+            catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
         }
 #else
         captureSource = CameraCaptureSource()
         recognizer = VisionTextRecognitionService()
+        catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
 #endif
+        _modelCatalog = State(initialValue: catalog)
         _photoController = State(initialValue: PhotoTranslationController(
             settings: settings,
             captureSource: captureSource,
             recognizer: recognizer,
+            modelCatalog: catalog,
             translationService: configuration.useCannedTranslation ? CannedTranslationService() : nil,
             synthesizer: voiceSynthesizer
         ))
@@ -126,7 +136,8 @@ struct AppShell: View {
                 controller: photoController,
                 session: session,
                 settings: settings,
-                onPickLanguage: { sheetDestination = .language(.target) }
+                onPickLanguage: { sheetDestination = .language(.target) },
+                ocrModelCatalog: modelCatalog
             )
             .tabItem {
                 Label(AppMode.camera.title, systemImage: AppMode.camera.systemImage)
@@ -199,7 +210,7 @@ struct AppShell: View {
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(30)
         case .settings:
-            SettingsView(settings: settings)
+            SettingsView(settings: settings, ocrModelCatalog: modelCatalog)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(30)
