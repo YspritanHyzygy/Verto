@@ -29,20 +29,30 @@ enum OverlayGeometry {
         var angle: Angle
     }
 
-    /// `.scaledToFit` 之后图片实际占据的矩形。叠加块必须按这个矩形定位，
-    /// 而不是容器尺寸——上下（或左右）的留白会让所有块整体偏移。
-    static func displayRect(imageSize: CGSize, in container: CGSize) -> CGRect {
+    /// `.aspectFill` 后的真实画布尺寸。画布可能大于视口，图片和贴片共用它，
+    /// 所以拖动时不会出现照片走了、贴片还钉在屏幕上的两套坐标。
+    static func aspectFillSize(imageSize: CGSize, in container: CGSize) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0,
               container.width > 0, container.height > 0 else {
             return .zero
         }
-        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
-        let size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return CGRect(
-            x: (container.width - size.width) / 2,
-            y: (container.height - size.height) / 2,
-            width: size.width,
-            height: size.height
+        let scale = max(container.width / imageSize.width, container.height / imageSize.height)
+        return CGSize(
+            width: imageSize.width * scale,
+            height: imageSize.height * scale
+        )
+    }
+
+    /// 结果默认以 1× 的 aspectFill 构图出现，但用户继续缩小时必须能看到整张照片。
+    /// 这个比例正好把 aspectFill 画布退回 aspectFit；不允许大于 1，避免小画布被反向放大。
+    static func minimumZoomScale(canvasSize: CGSize, viewportSize: CGSize) -> CGFloat {
+        guard canvasSize.width > 0, canvasSize.height > 0,
+              viewportSize.width > 0, viewportSize.height > 0 else {
+            return 1
+        }
+        return min(
+            min(viewportSize.width / canvasSize.width, viewportSize.height / canvasSize.height),
+            1
         )
     }
 
@@ -77,6 +87,23 @@ enum OverlayGeometry {
             size: CGSize(width: width, height: height),
             angle: .radians(Double(angle))
         )
+    }
+
+    /// 把触点旋回贴片自己的坐标系后判断是否落在框内。译文框可以随原文倾斜，
+    /// 只拿轴对齐包围盒判定会让框外四个角也莫名其妙可点。
+    static func contains(
+        _ point: CGPoint,
+        inRotatedRectAt center: CGPoint,
+        size: CGSize,
+        angle: Angle
+    ) -> Bool {
+        guard size.width > 0, size.height > 0 else { return false }
+        let radians = CGFloat(angle.radians)
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let localX = dx * cos(radians) + dy * sin(radians)
+        let localY = -dx * sin(radians) + dy * cos(radians)
+        return abs(localX) <= size.width / 2 && abs(localY) <= size.height / 2
     }
 }
 
@@ -241,25 +268,44 @@ struct TranslationOverlayView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let displayRect = OverlayGeometry.displayRect(imageSize: image.size, in: proxy.size)
-            ZStack {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .accessibilityHidden(true)
+            let canvasSize = OverlayGeometry.aspectFillSize(imageSize: image.size, in: proxy.size)
+            let imageRect = CGRect(origin: .zero, size: canvasSize)
 
-                ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-                    TranslationBlockSticker(
-                        block: block,
-                        index: index,
-                        placement: OverlayGeometry.place(block.quad, in: displayRect),
-                        palette: palettes[block.id] ?? .fallback,
-                        onTap: { onSelect(block) }
-                    )
+            ZoomableResultCanvas(
+                canvasSize: canvasSize,
+                viewportSize: proxy.size,
+                onTap: { point in
+                    // 后画的贴片在视觉上位于上层；若文字框重叠，点击也选同一块。
+                    if let block = blocks.reversed().first(where: { block in
+                        let placement = OverlayGeometry.place(block.quad, in: imageRect)
+                        return TranslationBlockSticker.contains(
+                            point,
+                            block: block,
+                            placement: placement
+                        )
+                    }) {
+                        onSelect(block)
+                    }
                 }
+            ) {
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .frame(width: canvasSize.width, height: canvasSize.height)
+                        .accessibilityHidden(true)
+
+                    ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
+                        TranslationBlockSticker(
+                            block: block,
+                            index: index,
+                            placement: OverlayGeometry.place(block.quad, in: imageRect),
+                            palette: palettes[block.id] ?? .fallback,
+                            onTap: { onSelect(block) }
+                        )
+                    }
+                }
+                .frame(width: canvasSize.width, height: canvasSize.height)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .task(id: blocks.map(\.id)) {
             await loadPalettes()
@@ -280,6 +326,120 @@ struct TranslationOverlayView: View {
         }.value
         guard !Task.isCancelled else { return }
         palettes = sampled
+    }
+}
+
+/// SwiftUI 的 `ScrollView` 与 `MagnifyGesture` 会互相抢识别器：能缩放后单指就拖不动，
+/// 把两个手势合并又会丢掉连续捏合。这里让系统同一个 `UIScrollView` 同时负责两者，
+/// 它承载的仍是上面的唯一一份真实照片与真实贴片，不创建截图或替身内容。
+private struct ZoomableResultCanvas<Content: View>: UIViewRepresentable {
+    let canvasSize: CGSize
+    let viewportSize: CGSize
+    let onTap: (CGPoint) -> Void
+    let content: Content
+
+    init(
+        canvasSize: CGSize,
+        viewportSize: CGSize,
+        onTap: @escaping (CGPoint) -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.canvasSize = canvasSize
+        self.viewportSize = viewportSize
+        self.onTap = onTap
+        self.content = content()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(content: content, onTap: onTap)
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 5
+        scrollView.bounces = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.accessibilityIdentifier = "camera.resultCanvas"
+
+        // UIKit 的 tap 会等 pan / pinch 明确失败后才触发：框上拖动和双指缩放
+        // 因而始终属于画布，只有几乎没位移的一指轻点才会进入译文详情。
+        let tapGesture = context.coordinator.tapGesture
+        tapGesture.require(toFail: scrollView.panGestureRecognizer)
+        if let pinchGesture = scrollView.pinchGestureRecognizer {
+            tapGesture.require(toFail: pinchGesture)
+        }
+        scrollView.addGestureRecognizer(tapGesture)
+
+        let hostedView = context.coordinator.hostingController.view!
+        hostedView.backgroundColor = .clear
+        scrollView.addSubview(hostedView)
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onTap = onTap
+        coordinator.hostingController.rootView = content
+        coordinator.hostingController.view.frame = CGRect(origin: .zero, size: canvasSize)
+        scrollView.contentSize = canvasSize
+
+        guard coordinator.canvasSize != canvasSize || coordinator.viewportSize != viewportSize else {
+            return
+        }
+        coordinator.canvasSize = canvasSize
+        coordinator.viewportSize = viewportSize
+
+        // 1× 仍是与取景一致的 aspectFill 初始构图；最小倍率退到 aspectFit，
+        // 所以用户可以缩到整张照片完整出现，而不是被 1× 硬挡住。
+        scrollView.minimumZoomScale = OverlayGeometry.minimumZoomScale(
+            canvasSize: canvasSize,
+            viewportSize: viewportSize
+        )
+
+        // 每边留半屏，UIScrollView 自己的边界便正好是“照片任意边到屏幕中心”；
+        // 关闭 bounce 后到这里就停，不会继续把画布拖进黑色虚空。
+        scrollView.contentInset = UIEdgeInsets(
+            top: viewportSize.height / 2,
+            left: viewportSize.width / 2,
+            bottom: viewportSize.height / 2,
+            right: viewportSize.width / 2
+        )
+        scrollView.zoomScale = 1
+        scrollView.contentOffset = CGPoint(
+            x: (canvasSize.width - viewportSize.width) / 2,
+            y: (canvasSize.height - viewportSize.height) / 2
+        )
+    }
+
+    static func dismantleUIView(_ scrollView: UIScrollView, coordinator: Coordinator) {
+        coordinator.hostingController.view.removeFromSuperview()
+        scrollView.delegate = nil
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        let hostingController: UIHostingController<Content>
+        lazy var tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTap(_:)))
+        var onTap: (CGPoint) -> Void
+        var canvasSize: CGSize = .zero
+        var viewportSize: CGSize = .zero
+
+        init(content: Content, onTap: @escaping (CGPoint) -> Void) {
+            hostingController = UIHostingController(rootView: content)
+            self.onTap = onTap
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            hostingController.view
+        }
+
+        @objc private func didTap(_ gesture: UITapGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            onTap(gesture.location(in: hostingController.view))
+        }
     }
 }
 
@@ -305,38 +465,55 @@ private struct TranslationBlockSticker: View {
         lineHeight * Self.coverInsetRatio
     }
 
+    static func contains(
+        _ point: CGPoint,
+        block: PhotoTranslationController.TranslatedBlock,
+        placement: OverlayGeometry.Placement
+    ) -> Bool {
+        let lineHeight = max(placement.size.height / CGFloat(max(block.lineCount, 1)), 1)
+        let inset = lineHeight * coverInsetRatio
+        return OverlayGeometry.contains(
+            point,
+            inRotatedRectAt: placement.center,
+            size: CGSize(
+                width: placement.size.width + inset * 2,
+                height: placement.size.height + inset * 2
+            ),
+            angle: placement.angle
+        )
+    }
+
     var body: some View {
-        Button(action: onTap) {
-            Text(block.displayText)
-                .font(.system(size: lineHeight * Self.capHeightRatio, weight: .medium))
-                .foregroundStyle(palette.foreground)
-                .lineLimit(block.lineCount)
-                .minimumScaleFactor(0.35)
-                .multilineTextAlignment(.leading)
-                .opacity(block.isPending ? 0.55 : 1)
-                .frame(
-                    width: max(placement.size.width, 1),
-                    height: max(placement.size.height, 1),
-                    alignment: .leading
-                )
-                .padding(inset)
-                .background(palette.background, in: RoundedRectangle(cornerRadius: inset * 2, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    if block.failed {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: max(lineHeight * 0.42, 9), weight: .bold))
-                            .foregroundStyle(AppTheme.alertOnPhoto)
-                            .padding(inset * 0.5)
-                    }
+        Text(block.displayText)
+            .font(.system(size: lineHeight * Self.capHeightRatio, weight: .medium))
+            .foregroundStyle(palette.foreground)
+            .lineLimit(block.lineCount)
+            .minimumScaleFactor(0.35)
+            .multilineTextAlignment(.leading)
+            .opacity(block.isPending ? 0.55 : 1)
+            .frame(
+                width: max(placement.size.width, 1),
+                height: max(placement.size.height, 1),
+                alignment: .leading
+            )
+            .padding(inset)
+            .background(palette.background, in: RoundedRectangle(cornerRadius: inset * 2, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                if block.failed {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: max(lineHeight * 0.42, 9), weight: .bold))
+                        .foregroundStyle(AppTheme.alertOnPhoto)
+                        .padding(inset * 0.5)
                 }
-        }
-        .buttonStyle(.plain)
-        .rotationEffect(placement.angle)
-        .position(placement.center)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(block.source)
-        .accessibilityValue(block.displayText)
-        .accessibilityHint(String(localized: "轻点查看原文与译文对照"))
-        .accessibilityIdentifier("camera.block.\(index)")
+            }
+            .rotationEffect(placement.angle)
+            .position(placement.center)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(block.source)
+            .accessibilityValue(block.displayText)
+            .accessibilityHint(String(localized: "轻点查看原文与译文对照"))
+            .accessibilityAction { onTap() }
+            .accessibilityIdentifier("camera.block.\(index)")
     }
 }

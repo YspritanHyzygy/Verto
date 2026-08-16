@@ -104,7 +104,10 @@ struct AppShell: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedMode) {
+        TabView(selection: Binding(
+            get: { selectedMode },
+            set: selectMode
+        )) {
             TextTranslateView(
                 session: session,
                 settings: settings,
@@ -136,7 +139,7 @@ struct AppShell: View {
                 controller: photoController,
                 session: session,
                 settings: settings,
-                onPickLanguage: { sheetDestination = .language(.target) },
+                onSwapLanguages: swapLanguages,
                 ocrModelCatalog: modelCatalog
             )
             .tabItem {
@@ -228,6 +231,17 @@ struct AppShell: View {
     private func swapLanguages() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         session.swapLanguages()
+    }
+
+    private func selectMode(_ newMode: AppMode) {
+        // 系统会把“再次点当前标签”转成其内容 ScrollView 的回顶部。结果页的
+        // ScrollView 是照片画布，这个默认行为会把构图硬拽走；相机标签重选在
+        // 产品语义上就是退出结果并重拍，所以在选择绑定这里直接拦截。
+        if newMode == .camera, selectedMode == .camera, photoController.image != nil {
+            photoController.reset()
+            return
+        }
+        selectedMode = newMode
     }
 
     private func dismissKeyboard() {

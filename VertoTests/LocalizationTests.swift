@@ -38,7 +38,7 @@ final class LocalizationTests: XCTestCase {
         "英语",
         "今天",
         "全部语言",
-        "对准文字并轻点快门",
+        "正在识别文字…",
         "未获得相机权限，请在系统设置中开启",
     ]
 

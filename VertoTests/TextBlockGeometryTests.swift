@@ -14,6 +14,7 @@
 //  limitations under the License.
 //
 
+import SwiftUI
 import XCTest
 @testable import Verto
 
@@ -71,28 +72,55 @@ final class TextBlockGeometryTests: XCTestCase {
 
     // MARK: - OverlayGeometry
 
-    func testDisplayRectLetterboxesTallImageInWideContainer() {
-        let rect = OverlayGeometry.displayRect(
+    func testAspectFillSizeCropsTallImageInWideContainer() {
+        let size = OverlayGeometry.aspectFillSize(
             imageSize: CGSize(width: 100, height: 200),
             in: CGSize(width: 400, height: 200)
         )
 
-        // 高图放进宽容器：按高度贴合，左右留白，块坐标必须按这个 100pt 宽的矩形算。
-        XCTAssertEqual(rect.width, 100, accuracy: 1e-9)
-        XCTAssertEqual(rect.height, 200, accuracy: 1e-9)
-        XCTAssertEqual(rect.minX, 150, accuracy: 1e-9)
-        XCTAssertEqual(rect.minY, 0, accuracy: 1e-9)
+        // 高图填满宽容器：宽度贴合、上下裁切，结果默认构图才会和 aspectFill 取景一致。
+        XCTAssertEqual(size.width, 400, accuracy: 1e-9)
+        XCTAssertEqual(size.height, 800, accuracy: 1e-9)
     }
 
-    func testDisplayRectIsZeroForDegenerateSizes() {
+    func testAspectFillSizeIsZeroForDegenerateSizes() {
         XCTAssertEqual(
-            OverlayGeometry.displayRect(imageSize: .zero, in: CGSize(width: 10, height: 10)),
+            OverlayGeometry.aspectFillSize(imageSize: .zero, in: CGSize(width: 10, height: 10)),
             .zero
         )
         XCTAssertEqual(
-            OverlayGeometry.displayRect(imageSize: CGSize(width: 10, height: 10), in: .zero),
+            OverlayGeometry.aspectFillSize(imageSize: CGSize(width: 10, height: 10), in: .zero),
             .zero
         )
+    }
+
+    func testMinimumZoomScaleFitsTheWholeAspectFillCanvas() {
+        let scale = OverlayGeometry.minimumZoomScale(
+            canvasSize: CGSize(width: 400, height: 800),
+            viewportSize: CGSize(width: 400, height: 200)
+        )
+
+        XCTAssertEqual(scale, 0.25, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(400 * scale, 400)
+        XCTAssertLessThanOrEqual(800 * scale, 200)
+    }
+
+    func testRotatedStickerHitTestingUsesItsRealShape() {
+        let angle = Angle.degrees(45)
+        let center = CGPoint(x: 100, y: 100)
+
+        XCTAssertTrue(OverlayGeometry.contains(
+            CGPoint(x: 121, y: 121),
+            inRotatedRectAt: center,
+            size: CGSize(width: 80, height: 20),
+            angle: angle
+        ))
+        XCTAssertFalse(OverlayGeometry.contains(
+            CGPoint(x: 130, y: 100),
+            inRotatedRectAt: center,
+            size: CGSize(width: 80, height: 20),
+            angle: angle
+        ), "轴对齐包围盒内、旋转贴片外的角落不应误开详情")
     }
 
     func testPointConversionFlipsVisionYAxis() {

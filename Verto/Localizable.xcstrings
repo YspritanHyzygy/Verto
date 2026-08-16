@@ -1673,41 +1673,6 @@
         }
       }
     },
-    "对准文字并轻点快门" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aim at the text and tap the shutter"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apunta al texto y toca el obturador"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文字に向けてシャッターをタップ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "텍스트를 비추고 셔터를 누르세요"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对准文字并轻点快门"
-          }
-        }
-      }
-    },
     "对话翻译" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3594,41 +3559,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在聆听 · %@ / %@"
-          }
-        }
-      }
-    },
-    "正在识别文字" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recognizing text"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reconociendo texto"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文字を認識中"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "텍스트 인식 중"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在识别文字"
           }
         }
       }

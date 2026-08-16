@@ -38,6 +38,7 @@ private final class StubCaptureSource: PhotoCaptureSource {
     private(set) var flashEnabled: Bool?
     private(set) var requestedFocusPoint: CGPoint?
     private(set) var requestedZoomFactor: CGFloat?
+    private(set) var captureCount = 0
 
     func start() async { startCount += 1 }
     func stop() { stopCount += 1 }
@@ -46,6 +47,7 @@ private final class StubCaptureSource: PhotoCaptureSource {
     func setDisplayZoomFactor(_ factor: CGFloat) { requestedZoomFactor = factor }
 
     func capturePhoto() async throws -> UIImage {
+        captureCount += 1
         if let captureError { throw captureError }
         return UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { context in
             UIColor.white.setFill()
@@ -250,6 +252,30 @@ final class PhotoTranslationControllerTests: XCTestCase {
         XCTAssertTrue(controller.blocks.isEmpty)
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertEqual(synthesizer.stopCount, 1, "回到取景要掐掉正在播的朗读")
+    }
+
+    func testResultImageDisablesAndRejectsAnotherCapture() {
+        let capture = StubCaptureSource()
+        let controller = makeController(recognizer: StubRecognizer(blocks: []), capture: capture)
+
+        controller.use(sample())
+        XCTAssertNotNil(controller.image)
+        XCTAssertFalse(controller.canCapture)
+
+        controller.capture()
+
+        XCTAssertEqual(capture.captureCount, 0, "结果态即使绕过界面直接调用，也不能再次拍照")
+    }
+
+    func testFirstShutterPressImmediatelyBlocksASecondOne() async {
+        let capture = StubCaptureSource()
+        let controller = makeController(recognizer: StubRecognizer(blocks: []), capture: capture)
+
+        controller.capture()
+        controller.capture()
+        await waitUntil({ controller.phase == .done }, "首轮拍照管线没有完成")
+
+        XCTAssertEqual(capture.captureCount, 1, "照片 delegate 回来前也只能有一轮拍照")
     }
 
     // MARK: - 单块失败与重试

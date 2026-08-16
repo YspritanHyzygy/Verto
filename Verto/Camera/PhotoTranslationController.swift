@@ -144,9 +144,9 @@ final class PhotoTranslationController {
         }
     }
 
-    /// 快门可用：有真实（或合成）采集能力，且当前没有在途识别。
+    /// 快门只在纯取景态可用；已有照片时即使识别结束，也不能从旧按钮位置再开一轮。
     var canCapture: Bool {
-        captureSource.canCapture && !isBusy
+        captureSource.canCapture && image == nil && !isBusy
     }
 
     // MARK: - 生命周期
@@ -179,8 +179,10 @@ final class PhotoTranslationController {
     }
 
     func capture() {
-        guard !isBusy else { return }
+        guard canCapture else { return }
         let generation = beginNewPass()
+        // 拍照 delegate 回来前 image 仍是 nil，先进入忙态才能挡住连续快门。
+        phase = .recognizing
         pipelineTask = Task { [weak self] in
             guard let self else { return }
             do {

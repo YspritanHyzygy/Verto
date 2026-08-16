@@ -462,6 +462,7 @@ final class VertoUITests: XCTestCase {
         let sourceRole = rolePicker.buttons["翻译自"]
         XCTAssertTrue(targetRole.waitForExistence(timeout: 2))
         XCTAssertTrue(sourceRole.waitForExistence(timeout: 2))
+        XCTAssertLessThan(sourceRole.frame.minX, targetRole.frame.minX, "源语言应排在目标语言左侧")
         XCTAssertTrue(waitUntilSelected(targetRole))
         XCTAssertTrue(waitUntilDeselected(sourceRole))
 
@@ -714,7 +715,8 @@ final class VertoUITests: XCTestCase {
     func testCameraShutterOverlaysTranslationsOnTheCapturedPhoto() throws {
         let app = launchApp(mode: "camera")
 
-        XCTAssertTrue(waitUntilSelected(tabButton(named: "相机", in: app)))
+        let cameraTab = tabButton(named: "相机", in: app)
+        XCTAssertTrue(waitUntilSelected(cameraTab))
         let gallery = element("camera.galleryPicker", in: app)
         let shutter = element("camera.shutterButton", in: app)
         let flash = element("camera.flashButton", in: app)
@@ -725,24 +727,100 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(shutter))
         XCTAssertTrue(waitUntilHittable(flash))
         XCTAssertEqual(elementCount("camera.exposureButton", in: app), 0)
+        XCTAssertEqual(elementCount("camera.recognitionReady", in: app), 0)
 
         let tabBarFrame = app.tabBars.firstMatch.frame
         XCTAssertFalse(gallery.frame.intersects(tabBarFrame))
         XCTAssertFalse(shutter.frame.intersects(tabBarFrame))
         XCTAssertFalse(flash.frame.intersects(tabBarFrame))
+        let appFrame = app.frame
+        XCTAssertGreaterThanOrEqual(
+            gallery.frame.minX - appFrame.minX,
+            30,
+            "相册按钮仍贴得太靠左"
+        )
+        XCTAssertGreaterThanOrEqual(
+            appFrame.maxX - flash.frame.maxX,
+            30,
+            "闪光按钮仍贴得太靠右"
+        )
+        captureScreenshot(named: "camera-controls-preview", of: app)
+        let oldShutterLocation = app.coordinate(withNormalizedOffset: CGVector(
+            dx: (shutter.frame.midX - appFrame.minX) / appFrame.width,
+            dy: (shutter.frame.midY - appFrame.minY) / appFrame.height
+        ))
         shutter.tap()
 
         // 同语音处理：加载态在 XCUI 的点后空闲等待返回之前就结束了，
         // 只断言稳定的终态与数据。
         let status = element("camera.recognitionTitle", in: app)
         XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertTrue(shutter.isEnabled)
+        XCTAssertEqual(elementCount("camera.galleryPicker", in: app), 0)
+        XCTAssertEqual(elementCount("camera.shutterButton", in: app), 0)
+        XCTAssertEqual(elementCount("camera.flashButton", in: app), 0)
+        let retake = app.buttons["camera.retakeButton"]
+        XCTAssertTrue(retake.waitForExistence(timeout: 2))
 
         // 至少一块译文贴片就地叠在照片上。
         let firstBlock = element("camera.block.0", in: app)
         XCTAssertTrue(firstBlock.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(elementCount("camera.block.1", in: app), 0, "多行告示应识别出多块")
         captureScreenshot(named: "camera-overlay", of: app)
+
+        let secondBlock = element("camera.block.1", in: app)
+        let canvas = element("camera.resultCanvas", in: app)
+        XCTAssertTrue(canvas.waitForExistence(timeout: 2))
+        let firstBeforeZoom = firstBlock.frame
+        // 两根手指直接落在译文框上也必须缩放整张画布，不能被框当成点击吞掉。
+        firstBlock.pinch(withScale: 1.6, velocity: 1)
+        let firstAfterZoomIn = firstBlock.frame
+        XCTAssertGreaterThan(
+            firstAfterZoomIn.width,
+            firstBeforeZoom.width + 20,
+            "结果照片没有响应双指放大"
+        )
+        captureScreenshot(named: "camera-overlay-zoomed", of: app)
+
+        firstBlock.pinch(withScale: 0.6, velocity: -1)
+        XCTAssertLessThan(
+            firstBlock.frame.width,
+            firstAfterZoomIn.width - 20,
+            "结果照片没有响应双指缩小"
+        )
+
+        var firstBeforePan = firstBlock.frame
+        var secondBeforePan = secondBlock.frame
+        // 单指也故意从译文框正中起拖；发生位移就只能滚动画布，不能打开详情。
+        let leftDragStart = firstBlock.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let leftDragEnd = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.55))
+        leftDragStart.press(forDuration: 0.05, thenDragTo: leftDragEnd)
+        var firstDelta = firstBlock.frame.minX - firstBeforePan.minX
+        var secondDelta = secondBlock.frame.minX - secondBeforePan.minX
+        if abs(firstDelta) <= 20 {
+            // 捏合会以手势中心保留落点，结束时可能正好贴住某一侧边界；
+            // 第一方向没空间就反向测，验的是可拖动而不是预设当前滚动位置。
+            firstBeforePan = firstBlock.frame
+            secondBeforePan = secondBlock.frame
+            let rightDragStart = firstBlock.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let rightDragEnd = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55))
+            rightDragStart.press(forDuration: 0.05, thenDragTo: rightDragEnd)
+            firstDelta = firstBlock.frame.minX - firstBeforePan.minX
+            secondDelta = secondBlock.frame.minX - secondBeforePan.minX
+        }
+        XCTAssertGreaterThan(abs(firstDelta), 20, "结果照片没有响应水平拖动")
+        XCTAssertEqual(firstDelta, secondDelta, accuracy: 2, "译文贴片没有作为同一画布一起移动")
+        XCTAssertEqual(elementCount("camera.blockDetail.source", in: app), 0, "从译文框起拖误开了详情")
+        captureScreenshot(named: "camera-overlay-panned", of: app)
+
+        // 默认仍铺满屏，但继续向内捏合必须能退到完整照片，而不是卡死在 1×。
+        let widthBeforeFit = firstBlock.frame.width
+        canvas.pinch(withScale: 0.1, velocity: -1)
+        XCTAssertLessThan(
+            firstBlock.frame.width,
+            widthBeforeFit - 20,
+            "结果照片的最小倍率仍卡在 aspectFill，无法缩到完整照片"
+        )
+        captureScreenshot(named: "camera-overlay-fitted", of: app)
 
         // 贴片的 label 是原文、value 是译文：断言两者的关系而非罐头字面值——
         // 源语言中文、目标语言英文，译文必须含拉丁字母且不等于原文。
@@ -754,6 +832,51 @@ final class VertoUITests: XCTestCase {
             translated.rangeOfCharacter(from: .latinLetters),
             "目标语言为英文时译文应含拉丁字母，实际：\(translated)"
         )
+
+        // 结果态原快门位置已经是画布；连续点它不能悄悄再开一轮拍照。
+        oldShutterLocation.tap()
+        oldShutterLocation.tap()
+        XCTAssertTrue(firstBlock.exists)
+        XCTAssertEqual(elementCount("camera.shutterButton", in: app), 0)
+
+        // 再点当前相机标签就是退出结果、回到取景；不能触发 ScrollView 回顶部。
+        cameraTab.tap()
+        XCTAssertTrue(shutter.waitForExistence(timeout: 3))
+        XCTAssertTrue(gallery.waitForExistence(timeout: 2))
+        XCTAssertTrue(flash.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilAbsent(firstBlock))
+    }
+
+    @MainActor
+    func testCameraLanguageMenusAndSwapFollowSourceTargetOrder() throws {
+        let app = launchApp(mode: "camera")
+
+        let source = element("camera.language.source", in: app)
+        let swap = element("camera.languageSwapButton", in: app)
+        let target = element("camera.language.target", in: app)
+        XCTAssertTrue(source.waitForExistence(timeout: 3))
+        XCTAssertTrue(swap.waitForExistence(timeout: 2))
+        XCTAssertTrue(target.waitForExistence(timeout: 2))
+        XCTAssertLessThan(source.frame.minX, swap.frame.minX)
+        XCTAssertLessThan(swap.frame.minX, target.frame.minX)
+        XCTAssertEqual(source.value as? String, "中文")
+        XCTAssertEqual(target.value as? String, "English")
+
+        swap.tap()
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "English"), on: source))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "中文"), on: target))
+        swap.tap()
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "中文"), on: source))
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "English"), on: target))
+
+        source.tap()
+        XCTAssertEqual(elementCount("languagePicker.list", in: app), 0, "相机语言按钮不应打开完整语言页")
+        let japanese = app.buttons["日本語"].firstMatch
+        XCTAssertTrue(japanese.waitForExistence(timeout: 2))
+        captureScreenshot(named: "camera-language-native-menu", of: app)
+        japanese.tap()
+        XCTAssertTrue(wait(for: NSPredicate(format: "value == %@", "日本語"), on: source))
+        XCTAssertEqual(target.value as? String, "English")
     }
 
     @MainActor

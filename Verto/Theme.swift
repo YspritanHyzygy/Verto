@@ -128,11 +128,19 @@ extension View {
     func liquidGlass<S: Shape, Fallback: View>(
         tint: Color? = nil,
         interactive: Bool = true,
+        clear: Bool = false,
         in shape: S,
         @ViewBuilder fallback: (Self) -> Fallback
     ) -> some View {
         if #available(iOS 26.0, *) {
-            glassEffect(.regular.tint(tint).interactive(interactive), in: shape)
+            if clear {
+                // Clear 没有透明度档位；18% 真机仍像裸玻璃，24% 是在保留底图的同时
+                // 加回一小层雾色。相机浮层在调用处使用浅色语义环境来托住深色前景。
+                background(.white.opacity(0.24), in: shape)
+                    .glassEffect(.clear.tint(tint).interactive(interactive), in: shape)
+            } else {
+                glassEffect(.regular.tint(tint).interactive(interactive), in: shape)
+            }
         } else {
             fallback(self)
         }

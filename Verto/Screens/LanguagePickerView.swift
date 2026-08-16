@@ -95,12 +95,12 @@ struct LanguagePickerView: View {
 
     private var segmentedControl: some View {
         Picker("语言方向", selection: $effectiveRole) {
-            Text(LanguageSelectionRole.target.title)
-                .tag(LanguageSelectionRole.target)
-                .accessibilityIdentifier("languagePicker.role.target")
             Text(LanguageSelectionRole.source.title)
                 .tag(LanguageSelectionRole.source)
                 .accessibilityIdentifier("languagePicker.role.source")
+            Text(LanguageSelectionRole.target.title)
+                .tag(LanguageSelectionRole.target)
+                .accessibilityIdentifier("languagePicker.role.target")
         }
         .pickerStyle(.segmented)
         .labelsHidden()
