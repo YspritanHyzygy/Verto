@@ -221,14 +221,35 @@ final class PaddleTextRecognitionService: TextRecognitionService {
 
         let steps = logits.shape[1].intValue
         let classes = logits.shape[2].intValue
-        let values = try Self.denseFloats(from: logits)
-        guard values.count >= steps * classes else { throw TextRecognitionError.recognitionFailed }
 
         // 只解码有效宽度对应的时间步。补白区也会产出预测，一起解码会在行尾
         // 拖出一串重复字符。时间步与输入宽度成正比（模型内部固定下采样 8 倍）。
-        let validSteps = max(1, Int((Double(steps) * Double(crop.usedWidth) / Double(width)).rounded()))
+        let validSteps = min(max(1, Int((Double(steps) * Double(crop.usedWidth) / Double(width)).rounded())), steps)
+
+        // 就地解码，不拷密集数组：这个张量是 1×80×18710，拷一份 5.99MB，
+        // 而解码只做逐步 argmax。转换脚本把输出钉成 float32，真机实测的
+        // strides 也是 [1497600, 18720, 1]，所以正常走的就是这条零拷贝路径。
+        let strides = logits.strides.map(\.intValue)
+        if logits.dataType == .float32, strides.count == 3, strides[2] == 1,
+           strides[1] >= classes {
+            return logits.withUnsafeMutableBytes { raw, _ -> CTCDecoder.Result in
+                guard let base = raw.bindMemory(to: Float.self).baseAddress else {
+                    return CTCDecoder.Result(text: "", confidence: 0)
+                }
+                // batch 维恒为 1，所以第 0 维不贡献偏移。
+                return CTCDecoder.decode(
+                    probabilities: base, stepStride: strides[1],
+                    timeSteps: validSteps, classCount: classes,
+                    characterSet: loaded.characters
+                )
+            }
+        }
+
+        // 兜底：float16 或非常规布局。没在真机上见过，宁可多拷一次也别猜着读。
+        let values = try Self.denseFloats(from: logits)
+        guard values.count >= steps * classes else { throw TextRecognitionError.recognitionFailed }
         return CTCDecoder.decode(
-            probabilities: values, timeSteps: min(validSteps, steps),
+            probabilities: values, timeSteps: validSteps,
             classCount: classes, characterSet: loaded.characters
         )
     }

@@ -89,6 +89,33 @@ enum CTCDecoder {
               probabilities.count >= timeSteps * classCount else {
             return Result(text: "", confidence: 0)
         }
+        return probabilities.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return Result(text: "", confidence: 0) }
+            return decode(
+                probabilities: base, stepStride: classCount,
+                timeSteps: timeSteps, classCount: classCount, characterSet: characterSet
+            )
+        }
+    }
+
+    /// 直接在模型输出缓冲上解码，不要求先拷成密集数组。
+    ///
+    /// 存在的理由：识别输出是 `1 × 80 × 18710`，拷一份要 5.99MB，而这里只需要
+    /// 逐时间步的 argmax。一张菜单三十行就是 180MB 的纯搬运。
+    ///
+    /// - Parameter stepStride: 相邻两个时间步之间的**元素**间隔。神经引擎会把
+    ///   最内维补齐到 64 字节对齐（真机上 18710 → 18720），所以这个值通常
+    ///   大于 `classCount`，不能拿 `classCount` 顶替。
+    static func decode(
+        probabilities: UnsafePointer<Float>,
+        stepStride: Int,
+        timeSteps: Int,
+        classCount: Int,
+        characterSet: OCRCharacterSet
+    ) -> Result {
+        guard timeSteps > 0, classCount > 1, stepStride >= classCount else {
+            return Result(text: "", confidence: 0)
+        }
 
         var text = ""
         var total: Float = 0
@@ -96,7 +123,7 @@ enum CTCDecoder {
         var previous = -1
 
         for step in 0..<timeSteps {
-            let base = step * classCount
+            let base = step * stepStride
             var best = 0
             var bestValue = probabilities[base]
             for k in 1..<classCount where probabilities[base + k] > bestValue {
