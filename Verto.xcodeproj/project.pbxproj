@@ -62,6 +62,7 @@
 		01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */; };
 		01C000000000000000000112 /* PaddleOCRProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000013 /* PaddleOCRProbeTests.swift */; };
 		01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000014 /* OCRImageCanvasTests.swift */; };
+		01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000015 /* TextDetectionPostProcessTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -139,6 +140,7 @@
 		01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionAvailabilityProbeTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000013 /* PaddleOCRProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleOCRProbeTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000014 /* OCRImageCanvasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvasTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000015 /* TextDetectionPostProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDetectionPostProcessTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000011 /* VertoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -283,6 +285,7 @@
 				01C000000000000000000012 /* VisionAvailabilityProbeTests.swift */,
 				01C000000000000000000013 /* PaddleOCRProbeTests.swift */,
 				01C000000000000000000014 /* OCRImageCanvasTests.swift */,
+				01C000000000000000000015 /* TextDetectionPostProcessTests.swift */,
 			);
 			path = VertoTests;
 			sourceTree = "<group>";
@@ -488,6 +491,7 @@
 				01C000000000000000000111 /* VisionAvailabilityProbeTests.swift in Sources */,
 				01C000000000000000000112 /* PaddleOCRProbeTests.swift in Sources */,
 				01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */,
+				01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

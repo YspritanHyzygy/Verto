@@ -20,24 +20,32 @@ import Foundation
 /// DB（Differentiable Binarization）检测头的后处理：概率图 → 文字行的旋转矩形。
 ///
 /// 全是纯函数，不碰 Core ML 也不碰 UIKit，因此可以脱离模型单测。
-/// 参数取值照搬 PaddleOCR 官方推理配置，改动要有实测支撑。
+///
+/// **超参数一律跟 PP-OCRv6 模型自带的 `inference.yml` 走，不要跟 PaddleOCR
+/// 命令行的默认值走。** 这两套值不一样，而且命令行那套是 v4 时代的口径：
+/// 曾经抄的就是它（0.3 / 0.6 / 1.5 / 512），三个阈值全都比模型自带的更严、
+/// 候选上限只有六分之一，系统性地少出框。
 ///
 /// **坐标系**：本文件全程用「概率图像素坐标」——原点左上、y 向下、单位是像素。
 /// 换算到 `TextQuad` 的 Vision 归一化坐标（原点左下、y 向上）只在
 /// `quads(from:mapWidth:mapHeight:)` 一处发生，别在中途翻转。
 enum TextDetectionPostProcess {
-    /// 概率图二值化阈值（官方 det_db_thresh）。
-    static let binarizationThreshold: Float = 0.3
-    /// 框内平均概率低于此值就丢弃（官方 det_db_box_thresh）。
+    /// 概率图二值化阈值（`inference.yml` 的 thresh）。
+    static let binarizationThreshold: Float = 0.2
+    /// 框内平均概率低于此值就丢弃（`inference.yml` 的 box_thresh）。
     /// 纹理和反光会形成低置信度的连通块，靠它筛掉。
-    static let boxScoreThreshold: Float = 0.6
-    /// 外扩比例（官方 det_db_unclip_ratio）。DB 训练时标注框是被收缩过的，
+    static let boxScoreThreshold: Float = 0.45
+    /// 外扩比例（`inference.yml` 的 unclip_ratio）。DB 训练时标注框是被收缩过的，
     /// 推理时必须扩回去，否则每行文字的首尾字母会被切掉。
-    static let unclipRatio: CGFloat = 1.5
+    static let unclipRatio: CGFloat = 1.4
     /// 短边小于这么多像素的框直接丢——这个尺度上不可能是一行字。
     static let minimumSideLength: CGFloat = 3
     /// 单张图最多保留的候选框数，防止病态输入（如整幅噪点）把后续识别拖垮。
-    static let maximumBoxes = 512
+    ///
+    /// 数值取自 `inference.yml` 的 max_candidates，但**语义与官方不同**：官方限的是
+    /// 「检查多少个轮廓」，这里限的是「保留多少个框」。后者是更直接的保护，
+    /// 而在 3000 这个量级上，真实照片两种口径都碰不到。
+    static let maximumBoxes = 3000
 
     /// 一个旋转矩形，四角按左上/右上/右下/左下排列（像素坐标，y 向下）。
     struct RotatedBox: Equatable {
@@ -274,8 +282,12 @@ enum TextDetectionPostProcess {
 
     // MARK: - 打分
 
-    /// 框内平均概率。按框的轴对齐包围盒逐像素取，与官方 `cv2.mean` + 掩膜等价
-    /// （框是矩形时两者只在边缘反走样上有微小差别，不影响 0.6 的判据）。
+    /// 框内平均概率，对齐官方 `box_score_fast`：在轴对齐包围盒里逐像素走，
+    /// 但**只统计落在四边形内部的**。
+    ///
+    /// 别退回"整个包围盒取平均"。文字水平时两者确实等价，可一旦框有倾角，
+    /// 包围盒的四个角会混进大片背景，均值被拉低——倾斜的行因此系统性掉分，
+    /// 再撞上 box_thresh 就整框丢掉。这正是官方要填掩膜的原因。
     static func meanProbability(
         inside corners: [CGPoint],
         probabilities: [Float],
@@ -283,6 +295,7 @@ enum TextDetectionPostProcess {
         validWidth: Int,
         validHeight: Int
     ) -> Float {
+        guard corners.count == 4 else { return 0 }
         let xs = corners.map(\.x), ys = corners.map(\.y)
         guard let minX = xs.min(), let maxX = xs.max(),
               let minY = ys.min(), let maxY = ys.max() else { return 0 }
@@ -296,12 +309,29 @@ enum TextDetectionPostProcess {
         var count = 0
         for y in y0...y1 {
             let row = y * width
-            for x in x0...x1 {
+            for x in x0...x1 where contains(CGPoint(x: x, y: y), in: corners) {
                 total += probabilities[row + x]
                 count += 1
             }
         }
+        // 掩膜可能一个像素都没盖住（框细到夹在两排像素中心之间）。
+        // 这种框本来就没有可信的分数，回 0 让 box_thresh 直接毙掉它。
         return count == 0 ? 0 : total / Float(count)
+    }
+
+    /// 点是否在凸四边形内。旋转矩形的四角是有序的，所以只要判断点在四条边的
+    /// 同一侧即可，不需要通用的射线法。叉积为 0（正好压在边上）算在内，
+    /// 与 `cv2.fillPoly` 把边界像素填进掩膜的行为一致。
+    private static func contains(_ point: CGPoint, in corners: [CGPoint]) -> Bool {
+        var sawPositive = false, sawNegative = false
+        for index in 0..<corners.count {
+            let a = corners[index], b = corners[(index + 1) % corners.count]
+            let cross = (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
+            if cross > 0 { sawPositive = true }
+            if cross < 0 { sawNegative = true }
+            if sawPositive && sawNegative { return false }
+        }
+        return true
     }
 
     // MARK: - 坐标换算
