@@ -297,6 +297,8 @@ struct CameraTranslateView: View {
     @ViewBuilder
     private var compactStatusBar: some View {
         switch controller.phase {
+        case .capturing:
+            compactStatus(String(localized: "正在拍照…"), showsProgress: true)
         case .recognizing:
             compactStatus(String(localized: "正在识别文字…"), showsProgress: true)
         case .translating:
@@ -331,7 +333,7 @@ struct CameraTranslateView: View {
     @ViewBuilder
     private var viewfinderStatus: some View {
         switch controller.phase {
-        case .recognizing, .translating, .done:
+        case .capturing, .recognizing, .translating, .done:
             EmptyView()
 
         case .idle, .ready:

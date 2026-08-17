@@ -90,6 +90,8 @@ final class CannedPhotoCaptureSource: PhotoCaptureSource {
     func setDisplayZoomFactor(_ factor: CGFloat) {
         displayZoomFactor = min(max(factor, minimumDisplayZoomFactor), maximumDisplayZoomFactor)
     }
+    /// 无取景层可冻。
+    func setPreviewFrozen(_ frozen: Bool) {}
 
     func capturePhoto() async throws -> UIImage {
         CannedSignFixture.renderImage()

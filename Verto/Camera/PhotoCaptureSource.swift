@@ -60,6 +60,12 @@ protocol PhotoCaptureSource: AnyObject {
     func setFlashEnabled(_ enabled: Bool)
     func focusAndMeter(at devicePoint: CGPoint)
     func setDisplayZoomFactor(_ factor: CGFloat)
+    /// 冻结/解冻取景画面，停在最后一帧。
+    ///
+    /// 快门按下的那一瞬间就要冻住，不能等照片回来——全分辨率照片从按下到
+    /// `didFinishProcessingPhoto` 要几百毫秒到一秒多（系统还要跑降噪与合成），
+    /// 这段时间画面继续动的话，用户看到的就是"按了快门没反应"。
+    func setPreviewFrozen(_ frozen: Bool)
     func capturePhoto() async throws -> UIImage
 }
 
@@ -146,6 +152,15 @@ final class CameraCaptureSource: PhotoCaptureSource {
         let clamped = min(max(factor, minimumDisplayZoomFactor), maximumDisplayZoomFactor)
         displayZoomFactor = clamped
         engine.setDisplayZoomFactor(clamped)
+    }
+
+    /// 断开**预览层自己的**连接，画面就停在最后一帧。
+    ///
+    /// 只动预览这一路：会话和照片输出照常跑，否则会把还没交付的这张照片一起掐掉。
+    /// 也不用另存一张截图当遮罩——预览层被断流后本来就保持最后一帧，
+    /// 再叠一层就是给同一件事造第二份真相。
+    func setPreviewFrozen(_ frozen: Bool) {
+        previewLayer?.connection?.isEnabled = !frozen
     }
 
     func capturePhoto() async throws -> UIImage {

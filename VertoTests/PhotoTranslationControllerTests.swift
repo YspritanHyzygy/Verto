@@ -39,15 +39,37 @@ private final class StubCaptureSource: PhotoCaptureSource {
     private(set) var requestedFocusPoint: CGPoint?
     private(set) var requestedZoomFactor: CGFloat?
     private(set) var captureCount = 0
+    private(set) var isPreviewFrozen = false
+
+    /// 把拍照挂在半空，好在「快门按了、照片还没回来」这一瞬间做断言——
+    /// 真机上这段有几百毫秒到一秒多，正是用户看到取景还在动的那段时间。
+    var holdsCapture = false
+    /// 拍照确实挂住了。不能拿 `captureCount` 顶替：计数在 await 之前就加了，
+    /// 那时 continuation 还没建，此刻放行等于放了个空，之后就永远醒不过来。
+    private(set) var isCaptureSuspended = false
+    private var pendingCapture: CheckedContinuation<Void, Never>?
+
+    func releaseCapture() {
+        pendingCapture?.resume()
+        pendingCapture = nil
+    }
 
     func start() async { startCount += 1 }
     func stop() { stopCount += 1 }
     func setFlashEnabled(_ enabled: Bool) { flashEnabled = enabled }
     func focusAndMeter(at devicePoint: CGPoint) { requestedFocusPoint = devicePoint }
     func setDisplayZoomFactor(_ factor: CGFloat) { requestedZoomFactor = factor }
+    func setPreviewFrozen(_ frozen: Bool) { isPreviewFrozen = frozen }
 
     func capturePhoto() async throws -> UIImage {
         captureCount += 1
+        if holdsCapture {
+            await withCheckedContinuation { continuation in
+                pendingCapture = continuation
+                isCaptureSuspended = true
+            }
+            isCaptureSuspended = false
+        }
         if let captureError { throw captureError }
         return UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { context in
             UIColor.white.setFill()
@@ -154,6 +176,60 @@ final class PhotoTranslationControllerTests: XCTestCase {
             UIColor.gray.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 30, height: 30))
         }
+    }
+
+    // MARK: - 快门时序
+
+    /// 真机上从按下快门到 `didFinishProcessingPhoto` 有几百毫秒到一秒多。
+    /// 这段时间里画面必须已经定住，状态也不能谎称在识别——那时手里根本没有图。
+    func testShutterFreezesThePreviewBeforeThePhotoArrives() async {
+        let capture = StubCaptureSource()
+        capture.holdsCapture = true
+        let controller = makeController(recognizer: StubRecognizer(blocks: [block("牌子")]), capture: capture)
+
+        controller.capture()
+        // 冻结是同步做的：管线的 Task 还没轮上，画面就该定住了。
+        XCTAssertTrue(capture.isPreviewFrozen, "快门按下后取景没有立刻冻住")
+
+        // 停在「快门已按、照片没回来」这一刻——真机上用户看到取景还在动的就是这段。
+        await waitUntil({ capture.isCaptureSuspended }, "拍照没有挂在半空，前提没立住")
+        XCTAssertNil(controller.image, "前提没立住：照片不该已经到手")
+        XCTAssertTrue(capture.isPreviewFrozen, "等照片的这段时间里取景又活了")
+        XCTAssertEqual(controller.phase, .capturing, "还没有照片就对用户说在识别文字")
+
+        capture.releaseCapture()
+        await waitUntil({ controller.phase == .done }, "管线没有走到 done")
+        XCTAssertNotNil(controller.image)
+        XCTAssertTrue(capture.isPreviewFrozen, "结果已经上屏，取景不该又活过来")
+    }
+
+    func testRetakeUnfreezesThePreview() async {
+        let capture = StubCaptureSource()
+        let controller = makeController(recognizer: StubRecognizer(blocks: [block("牌子")]), capture: capture)
+
+        controller.capture()
+        await waitUntil({ controller.phase == .done }, "管线没有走到 done")
+        XCTAssertTrue(capture.isPreviewFrozen)
+
+        controller.reset()
+        XCTAssertFalse(capture.isPreviewFrozen, "回到取景后画面还冻在上一张的最后一帧")
+    }
+
+    /// 拍照本身失败时界面退回取景，取景就必须是活的——否则用户对着一张
+    /// 定格的死画面按快门，怎么按都没反应。
+    func testCaptureFailureUnfreezesThePreview() async {
+        let capture = StubCaptureSource()
+        capture.captureError = CameraCaptureError.captureFailed
+        let controller = makeController(recognizer: StubRecognizer(), capture: capture)
+
+        controller.capture()
+        await waitUntil(
+            { if case .failed = controller.phase { return true } else { return false } },
+            "拍照失败没有落到失败态"
+        )
+
+        XCTAssertNil(controller.image)
+        XCTAssertFalse(capture.isPreviewFrozen, "拍照失败后取景还冻着")
     }
 
     // MARK: - 主流程

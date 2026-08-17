@@ -30,6 +30,9 @@ final class PhotoTranslationController {
         case idle
         /// 有图待识别（从相册选进来、或拍完还没按识别）。
         case ready
+        /// 快门已按下，照片还没交付。这段时间取景已冻住但手里还没有图，
+        /// 不能并进 `recognizing`——那会让界面在还没有照片时就说"正在识别文字"。
+        case capturing
         case recognizing
         /// 已出块，译文陆续填入。
         case translating
@@ -129,7 +132,7 @@ final class PhotoTranslationController {
     // MARK: - 状态展示
 
     var isBusy: Bool {
-        phase == .recognizing || phase == .translating
+        phase == .capturing || phase == .recognizing || phase == .translating
     }
 
     var isPermissionFailure: Bool {
@@ -181,8 +184,11 @@ final class PhotoTranslationController {
     func capture() {
         guard canCapture else { return }
         let generation = beginNewPass()
-        // 拍照 delegate 回来前 image 仍是 nil，先进入忙态才能挡住连续快门。
-        phase = .recognizing
+        // 按下即冻，不等照片回来：交付要几百毫秒到一秒多，画面在这期间继续动
+        // 就是"快门没反应"。冻结只作用于预览层，照片该怎么拍还怎么拍。
+        captureSource.setPreviewFrozen(true)
+        // delegate 回来前 image 仍是 nil，先进入忙态才能挡住连续快门。
+        phase = .capturing
         pipelineTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -219,6 +225,8 @@ final class PhotoTranslationController {
         synthesizer.stop()
         image = nil
         phase = .idle
+        // 回到取景就必须解冻，否则下一次进来看到的是上一张的最后一帧。
+        captureSource.setPreviewFrozen(false)
     }
 
     func retryTranslation(for blockID: UUID) {
@@ -380,6 +388,9 @@ final class PhotoTranslationController {
 
     private func fail(with error: Error) {
         blocks = []
+        // 拍照本身就失败时手里没有图，界面退回取景——那就得是活的取景。
+        // 识别失败则相反：照片还在屏幕上，取景层根本没在显示，不必解冻。
+        if image == nil { captureSource.setPreviewFrozen(false) }
         switch error {
         case CameraCaptureError.permissionDenied:
             phase = .failed(.permissionDenied(
