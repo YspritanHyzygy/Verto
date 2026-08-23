@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  只放 Xcode 的 Info.plist 生成器认不出的自定义键。其余全部仍由
+	  GENERATE_INFOPLIST_FILE 与 INFOPLIST_KEY_* 生成，两者构建时合并。
+	  （INFOPLIST_KEY_ 只对 Xcode 已知的键生效，自定义键必须走这里。）
+
+	  值来自 Secrets.xcconfig，构建时做变量展开；没配就是空串，
+	  App 侧读到空串即视为未配置，落到系统翻译。
+	-->
+	<key>VertoRelayHost</key>
+	<string>$(VERTO_RELAY_HOST)</string>
+	<key>VertoRelayToken</key>
+	<string>$(VERTO_RELAY_TOKEN)</string>
+</dict>
+</plist>

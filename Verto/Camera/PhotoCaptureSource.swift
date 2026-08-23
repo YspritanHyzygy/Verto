@@ -16,6 +16,7 @@
 
 import AVFoundation
 import ImageIO
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -30,6 +31,26 @@ enum CameraCaptureError: LocalizedError, Equatable {
         case .unavailable: String(localized: "此设备没有可用的相机，请从相册选择照片")
         case .captureFailed: String(localized: "拍照失败，请重试")
         }
+    }
+}
+
+/// 一张刚拍下来的照片，外加"画面里的世界歪了多少"。
+///
+/// **照片本身一个像素不改。** 取景器里是什么样，结果页就是什么样——倒着拍就该得到
+/// 一张倒着的照片，横着拍就该得到一张横着的照片。App 不替用户"把画面转正"。
+///
+/// 歪的那部分只交给识别用：识别前在内部转正一份副本，识别完把框转回原图坐标。
+/// 显示与取色始终吃这张没动过的原图，所以仍然只有一套坐标系。
+struct CapturedPhoto: Sendable {
+    let image: UIImage
+    /// 画面里的世界相对正立**顺时针**转过的 90° 数（0…3）。竖持为 0，两种横持各为 1 和 3。
+    ///
+    /// 相册选图恒为 0：EXIF 已由 `normalizedUp()` 烘进像素，再没有别的方向信息可依据。
+    let contentQuarterTurns: Int
+
+    init(image: UIImage, contentQuarterTurns: Int = 0) {
+        self.image = image
+        self.contentQuarterTurns = ((contentQuarterTurns % 4) + 4) % 4
     }
 }
 
@@ -66,7 +87,7 @@ protocol PhotoCaptureSource: AnyObject {
     /// `didFinishProcessingPhoto` 要几百毫秒到一秒多（系统还要跑降噪与合成），
     /// 这段时间画面继续动的话，用户看到的就是"按了快门没反应"。
     func setPreviewFrozen(_ frozen: Bool)
-    func capturePhoto() async throws -> UIImage
+    func capturePhoto() async throws -> CapturedPhoto
 }
 
 @Observable
@@ -163,7 +184,7 @@ final class CameraCaptureSource: PhotoCaptureSource {
         previewLayer?.connection?.isEnabled = !frozen
     }
 
-    func capturePhoto() async throws -> UIImage {
+    func capturePhoto() async throws -> CapturedPhoto {
         guard canCapture else {
             throw isPermissionDenied ? CameraCaptureError.permissionDenied : CameraCaptureError.unavailable
         }
@@ -230,6 +251,20 @@ private final class CaptureEngine: @unchecked Sendable {
     private var device: AVCaptureDevice?
     private var isConfigured = false
     private var stateHandler: (@Sendable (CameraState) -> Void)?
+    /// 重力方向的读数来源。真机实测（iPhone 16 Pro）：竖持时它给 90°、横持时给 0°。
+    ///
+    /// **它不驱动任何 connection。** 取景和照片都固定 90°，跟着界面走而不是跟着重力——
+    /// App 锁竖屏，取景要是跟着重力，横持时画面会在竖视口里自己转起来；照片要是跟着重力，
+    /// 用户按下快门看到的画面和拿到的照片就对不上了。
+    ///
+    /// 它的唯一用途是回答"这张照片里的世界躺了多少度"：`固定角 − 这个读数`。
+    /// 答案随照片一起交出去（`CapturedPhoto.contentQuarterTurns`），由识别那一步用。
+    ///
+    /// **不用 KVO，改为拍照前当场取值。** 上一次修这个 Bug 就是 KVO 订阅
+    /// `videoRotationAngleForHorizonLevelCapture`，真机上表现更糟、已 revert；
+    /// 具体原因至今没查清（协调器在串行队列上构造而 KVO 走主队列、`.initial` 时
+    /// 重力未定，都有嫌疑）。当场取值把这些时序问题整类消掉：属性本身永远是最新的。
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var focusObservation: NSKeyValueObservation?
     private var exposureObservation: NSKeyValueObservation?
     private var focusPointObservation: NSKeyValueObservation?
@@ -270,11 +305,18 @@ private final class CaptureEngine: @unchecked Sendable {
         }
     }
 
+    /// delegate 用具体类型而非协议：入队前要往它身上挂一份方向快照。
     func capturePhoto(
         with settings: AVCapturePhotoSettings,
-        delegate: AVCapturePhotoCaptureDelegate
+        delegate: PhotoCaptureDelegate
     ) {
         queue.async {
+            // 角度不动。记下按快门这一刻重力在哪，识别那一步才知道要把副本转多少。
+            delegate.orientationSnapshot = OrientationSnapshot(
+                appliedAngle: self.photoOutput.connection(with: .video)?.videoRotationAngle,
+                horizonLevelCapture: self.rotationCoordinator?.videoRotationAngleForHorizonLevelCapture,
+                horizonLevelPreview: self.rotationCoordinator?.videoRotationAngleForHorizonLevelPreview
+            )
             // capturePhoto 只是向系统入队，不会把会话队列堵在照片处理上。
             self.photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
@@ -330,6 +372,7 @@ private final class CaptureEngine: @unchecked Sendable {
         session.sessionPreset = .photo
         session.addInput(input)
         session.addOutput(photoOutput)
+        // 固定 90°：照片跟着界面走，取景器里是什么构图，拍出来就是什么构图。
         // 连接要在 addOutput 之后才存在，取角度必须放在 commitConfiguration 之前。
         if let connection = photoOutput.connection(with: .video),
            connection.isVideoRotationAngleSupported(90) {
@@ -339,6 +382,7 @@ private final class CaptureEngine: @unchecked Sendable {
 
         self.device = device
         isConfigured = true
+        rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
         installDeviceObservers(for: device)
         configureContinuousAuto(
             on: device,
@@ -461,10 +505,39 @@ private final class CaptureEngine: @unchecked Sendable {
     }
 }
 
-private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
-    private let completion: @MainActor (Result<UIImage, Error>) -> Void
+/// 拍照瞬间的方向读数。`applied` 是 connection 实际用的角度（固定 90），
+/// 另两个是 `RotationCoordinator` 认为正立需要的角度。三者不相等是**预期**的：
+/// 差值就是这张照片里的世界躺了多少。
+struct OrientationSnapshot: Sendable {
+    let appliedAngle: CGFloat?
+    let horizonLevelCapture: CGFloat?
+    let horizonLevelPreview: CGFloat?
 
-    init(completion: @escaping @MainActor (Result<UIImage, Error>) -> Void) {
+    /// 画面里的世界相对正立顺时针转过的 90° 数。
+    ///
+    /// 方向由真机照片钉死：某次横持拍摄读数为 `applied=90 / capture=0`，
+    /// 出图里的印刷字是从上往下跑、字头朝左——要把图**逆时针**转 90° 才正。
+    /// 也就是说画面顺时针歪了 `applied − capture`，转正就往回逆时针转同样多。
+    ///
+    /// 读不到读数（模拟器、协调器还没起来）就当 0：与加这套东西之前的行为一致。
+    var contentQuarterTurns: Int {
+        guard let applied = appliedAngle, let level = horizonLevelCapture else { return 0 }
+        let turns = Int((applied - level).rounded()) / 90
+        return ((turns % 4) + 4) % 4
+    }
+}
+
+private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    private let completion: @MainActor (Result<CapturedPhoto, Error>) -> Void
+    /// 由 CaptureEngine 在入队前填好。
+    var orientationSnapshot: OrientationSnapshot?
+
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Verto",
+        category: "CaptureOrientation"
+    )
+
+    init(completion: @escaping @MainActor (Result<CapturedPhoto, Error>) -> Void) {
         self.completion = completion
     }
 
@@ -475,15 +548,56 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
     ) {
         // fileDataRepresentation 带完整 EXIF，UIImage(data:) 据此填好 imageOrientation；
         // 直接取 cgImageRepresentation 会丢方向，Vision 会把竖持拍的照片当横排识别。
-        let result: Result<UIImage, Error>
+        let result: Result<CapturedPhoto, Error>
         if error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) {
-            result = .success(image)
+            logOrientation(of: image)
+            result = .success(
+                CapturedPhoto(
+                    image: image,
+                    contentQuarterTurns: orientationSnapshot?.contentQuarterTurns ?? 0
+                )
+            )
         } else {
             result = .failure(CameraCaptureError.captureFailed)
         }
         // 回调线程由系统决定；状态与 continuation 都归主线程。
         let completion = completion
         Task { @MainActor in completion(result) }
+    }
+
+    /// 横屏诊断。识别那一步要按 `contentQuarterTurns` 把副本转正，
+    /// 这个数字算错时画面不会崩，只是译框整体转 90° 落到别处——
+    /// 症状和"识别本身不准"长得一模一样，所以要有一行能直接看的记录。
+    private func logOrientation(of image: UIImage) {
+        let snapshot = orientationSnapshot
+        Self.logger.info(
+            """
+            拍照方向 · 出图 imageOrientation=\(Self.name(of: image.imageOrientation), privacy: .public) \
+            size=\(Int(image.size.width), privacy: .public)x\(Int(image.size.height), privacy: .public) \
+            · connection 实际用=\(Self.degrees(snapshot?.appliedAngle), privacy: .public) \
+            · 系统建议 capture=\(Self.degrees(snapshot?.horizonLevelCapture), privacy: .public) \
+            preview=\(Self.degrees(snapshot?.horizonLevelPreview), privacy: .public) \
+            · 送识别前顺时针转正 \(snapshot?.contentQuarterTurns ?? 0, privacy: .public)×90°
+            """
+        )
+    }
+
+    private static func degrees(_ angle: CGFloat?) -> String {
+        angle.map { String(format: "%.0f°", $0) } ?? "n/a"
+    }
+
+    private static func name(of orientation: UIImage.Orientation) -> String {
+        switch orientation {
+        case .up: "up"
+        case .down: "down"
+        case .left: "left"
+        case .right: "right"
+        case .upMirrored: "upMirrored"
+        case .downMirrored: "downMirrored"
+        case .leftMirrored: "leftMirrored"
+        case .rightMirrored: "rightMirrored"
+        @unknown default: "unknown(\(orientation.rawValue))"
+        }
     }
 }
 

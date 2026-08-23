@@ -1,0 +1,27 @@
+name = "verto-translate-relay"
+main = "src/index.js"
+compatibility_date = "2026-08-18"
+
+# workers.dev 在大陆解析不了，必须绑自定义域。
+# 这里关掉 workers.dev 子域，免得留一个自己用不上、别人却扫得到的入口。
+workers_dev = false
+
+# 部署后在 Cloudflare 控制台把 routes 指到你的子域，或取消下面两行的注释：
+# [[routes]]
+# pattern = "api.vertotranslate.com/*"
+# zone_name = "vertotranslate.com"
+
+# 令牌泄漏后的减速带。period 只能是 10 或 60。
+[[ratelimits]]
+name = "RELAY_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+# 秘密一律用 `wrangler secret put`，绝不写进这个文件——它是要提交进公开仓库的：
+#   wrangler secret put GOOGLE_SA_EMAIL
+#   wrangler secret put GOOGLE_SA_PRIVATE_KEY
+#   wrangler secret put GCP_PROJECT_ID
+#   wrangler secret put VERTO_SHARED_TOKEN

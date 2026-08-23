@@ -142,6 +142,43 @@ final class TextDetectionPostProcessTests: XCTestCase {
         )
     }
 
+    // MARK: - 外扩框 vs 紧框
+
+    func testBoxCarriesBothExpandedAndUnexpandedCorners() throws {
+        // 一行长条文字。裁剪要用外扩框（不扩会切掉首尾字母），但行高、行距、
+        // 倾角这些"是否同一段"的判据必须用紧框——外扩距离是
+        // w·h·ratio/(2(w+h))，跟长宽比有关，长行扩得多短行扩得少，
+        // 拿外扩框当判据等于让阈值随每行的形状漂移。
+        let width = 64, height = 24
+        var probabilities = [Float](repeating: 0, count: width * height)
+        let blobTop = 9, blobBottom = 15, blobLeft = 6, blobRight = 54
+        for y in blobTop..<blobBottom {
+            for x in blobLeft..<blobRight { probabilities[y * width + x] = 1 }
+        }
+
+        let boxes = TextDetectionPostProcess.boxes(
+            probabilities: probabilities, width: width, height: height,
+            validWidth: width, validHeight: height
+        )
+        let box = try XCTUnwrap(boxes.first)
+
+        func extent(_ corners: [CGPoint]) -> (width: CGFloat, height: CGFloat) {
+            let xs = corners.map(\.x), ys = corners.map(\.y)
+            return (xs.max()! - xs.min()!, ys.max()! - ys.min()!)
+        }
+        let expanded = extent(box.corners)
+        let tight = extent(box.tightCorners)
+
+        // 紧框贴着连通块本身（宽 48、高 6，量化误差算一像素）。
+        XCTAssertEqual(tight.width, CGFloat(blobRight - blobLeft - 1), accuracy: 1.5)
+        XCTAssertEqual(tight.height, CGFloat(blobBottom - blobTop - 1), accuracy: 1.5)
+
+        // 外扩框在两个方向上都更大；长行的高度会被扩到约 2.4 倍，
+        // 正是这个倍数让"行距 ≤ 1.6 倍行高"的判据松掉约三倍。
+        XCTAssertGreaterThan(expanded.height, tight.height * 1.8)
+        XCTAssertGreaterThan(expanded.width, tight.width)
+    }
+
     // MARK: - letterbox 补边
 
     func testPaddingOutsideTheValidAreaIsIgnored() {

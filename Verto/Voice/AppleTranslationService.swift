@@ -49,6 +49,11 @@ protocol AppleTranslating: AnyObject {
 @MainActor
 @Observable
 final class AppleTranslationProvider: AppleTranslating {
+    /// 全 App 共用一个。iOS 18–25 那条路只能借 AppShell 根部那个常驻宿主视图的
+    /// session（`.translationTask` 是唯一入口），第二个实例没有宿主，
+    /// 只会白等 3 秒再报不可用——所以不能各建各的。
+    static let shared = AppleTranslationProvider()
+
     /// iOS 18–25 宿主视图消费的配置；语言对变化时重建以触发新 session。
     /// 存 Any 以绕过存储属性不能挂 @available 的限制。
     private var hostConfigurationStorage: Any?
@@ -79,7 +84,7 @@ final class AppleTranslationProvider: AppleTranslating {
         volatilePreferred: Bool
     ) async throws -> String {
 #if targetEnvironment(simulator)
-        throw AppleTranslationUnavailableError(reason: "模拟器不支持系统翻译")
+        throw AppleTranslationUnavailableError(reason: String(localized: "模拟器不支持系统翻译"))
 #else
         if #available(iOS 26.0, *) {
             return try await directTranslate(text, source: source, target: target, volatilePreferred: volatilePreferred)
@@ -87,7 +92,7 @@ final class AppleTranslationProvider: AppleTranslating {
         if #available(iOS 18.0, *) {
             return try await hostTranslate(text, source: source, target: target)
         }
-        throw AppleTranslationUnavailableError(reason: "系统翻译需要 iOS 18 或以上")
+        throw AppleTranslationUnavailableError(reason: String(localized: "系统翻译需要 iOS 18 或以上"))
 #endif
     }
 
@@ -130,7 +135,9 @@ final class AppleTranslationProvider: AppleTranslating {
         }
         let status = await LanguageAvailability().status(from: source.localeLanguage, to: target.localeLanguage)
         guard status == .installed else {
-            let reason = status == .supported ? "语言包未安装" : "语言对不受支持"
+            let reason = status == .supported
+                ? String(localized: "语言包未安装")
+                : String(localized: "语言对不受支持")
             throw AppleTranslationUnavailableError(reason: reason)
         }
         let session: Translation.TranslationSession

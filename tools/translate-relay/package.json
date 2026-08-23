@@ -1,0 +1,12 @@
+{
+  "name": "verto-translate-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "译境（Verto）的翻译中转：验令牌、换 GCP token、调 Cloud Translation v3。",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

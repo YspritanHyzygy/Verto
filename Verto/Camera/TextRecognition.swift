@@ -65,6 +65,34 @@ struct TextQuad: Equatable, Sendable {
         )
     }
 
+    /// 把在"转正后的图"里量到的框搬回原图坐标。`OCRImageStraightening.straighten`
+    /// 的逆运算，两者必须同进同退——所以写在一起。
+    ///
+    /// 归一化坐标各轴独立除以自己的边长，转 90° 带来的长宽互换已经被归一化吸收，
+    /// 于是这里只是在单位正方形里转点：顺时针一格就是 `(x, y) → (y, 1 - x)`。
+    /// （Vision 的 y 向上，y=1 是画面视觉上的顶边，所以"顺时针"和肉眼看到的一致。）
+    ///
+    /// **四角的名字不跟着转。** `topLeft` 说的是"这行文字的左上角"，不是"图的左上角"；
+    /// 转回去之后它还是同一个物理角。跟着重命名会让 `angle` 丢掉这行真实的倾角，
+    /// 贴纸也就不会跟着躺下来。
+    func rotatedClockwise(quarterTurns: Int) -> TextQuad {
+        let turns = ((quarterTurns % 4) + 4) % 4
+        guard turns != 0 else { return self }
+        func spin(_ point: CGPoint) -> CGPoint {
+            var point = point
+            for _ in 0..<turns {
+                point = CGPoint(x: point.y, y: 1 - point.x)
+            }
+            return point
+        }
+        return TextQuad(
+            topLeft: spin(topLeft),
+            topRight: spin(topRight),
+            bottomRight: spin(bottomRight),
+            bottomLeft: spin(bottomLeft)
+        )
+    }
+
     static func upright(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> TextQuad {
         TextQuad(
             topLeft: CGPoint(x: x, y: y + height),
@@ -75,20 +103,93 @@ struct TextQuad: Equatable, Sendable {
     }
 }
 
+/// 送去识别之前把画面转正。**只作用于识别用的那份副本**，照片本身一个像素不改
+/// （见 `CapturedPhoto`）。
+///
+/// 非转不可的原因：检测与后处理全都假设文字是横排的。歪着送进去，
+/// `TextDetectionPostProcess.orderCorners` 会把竖行的短边当成上边，
+/// `OCRImageCanvas.crop` 随即把一条 20×200 的竖行重采样成 16×48 的糊块——
+/// 就是横屏结果里"每块只剩一两个字符"的成因。Vision 那条路同样吃亏。
+enum OCRImageStraightening {
+    /// `quarterTurnsClockwise` 是画面里的世界相对正立被顺时针转过的 90° 数，
+    /// 所以转正就是往回**逆时针**转同样多。0 时原样返回，不白拷一张。
+    ///
+    /// 建不出位图上下文时原样返回：识别质量会掉回没转之前，但不会把这张照片作废。
+    static func straighten(_ image: CGImage, quarterTurnsClockwise turns: Int) -> CGImage {
+        let turns = ((turns % 4) + 4) % 4
+        guard turns != 0 else { return image }
+
+        let width = image.width
+        let height = image.height
+        let swapsAxes = turns % 2 == 1
+        let destinationWidth = swapsAxes ? height : width
+        let destinationHeight = swapsAxes ? width : height
+
+        // 固定用 DeviceRGB + 32bpp：这份副本只喂识别器，不参与取色，
+        // 色彩空间保真没有意义，而"什么图都建得出上下文"有。
+        guard let context = CGContext(
+            data: nil,
+            width: destinationWidth,
+            height: destinationHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else {
+            return image
+        }
+
+        // CGContext 原点在左下、y 向上，`rotate(by:)` 正角为逆时针。
+        // 先把转完之后落到画外的那半平移回来，再画整张原图。
+        switch turns {
+        case 1:
+            context.translateBy(x: CGFloat(height), y: 0)
+            context.rotate(by: .pi / 2)
+        case 2:
+            context.translateBy(x: CGFloat(width), y: CGFloat(height))
+            context.rotate(by: .pi)
+        default:
+            context.translateBy(x: 0, y: CGFloat(width))
+            context.rotate(by: -.pi / 2)
+        }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage() ?? image
+    }
+}
+
 /// 识别出的一段文字。一段 = 视觉上归属同一块的若干行（见 `TextBlockGrouping`），
 /// 整段一起送翻译——逐行翻译会把一句话切碎，译文质量掉得很明显。
 struct RecognizedTextBlock: Identifiable, Equatable, Sendable {
     let id: UUID
     let text: String
+    /// 显示与取色用的框：要真的**盖得住**原文，所以必须把整个字形圈进去。
     let quad: TextQuad
+    /// 合并判据用的框，**只在 `TextBlockGrouping` 内部流通**，不出识别器。
+    ///
+    /// 两个框分开是因为它们要的东西相反。PP-OCRv6 的 DB 检测器给出的是文字区域的
+    /// **收缩**多边形，`unclip_ratio` 把它还原回真实字形边界——盖原文得用还原后的，
+    /// 不然贴片只压住字的中间一条，上下都露着。但还原量随长宽比变化（长行约 2.4×、
+    /// 短行约 1.7×），拿它当阈值等于让判据随每行形状漂移，标题/正文那道闸门会被反转。
+    ///
+    /// Vision 路径两者相同：它本来就只给一个框。
+    let metricsQuad: TextQuad
     /// 合并进来的原始行数。叠加层据此决定译文允许折几行。
     let lineCount: Int
     let confidence: Float
 
-    init(id: UUID = UUID(), text: String, quad: TextQuad, lineCount: Int = 1, confidence: Float = 1) {
+    init(
+        id: UUID = UUID(),
+        text: String,
+        quad: TextQuad,
+        metricsQuad: TextQuad? = nil,
+        lineCount: Int = 1,
+        confidence: Float = 1
+    ) {
         self.id = id
         self.text = text
         self.quad = quad
+        self.metricsQuad = metricsQuad ?? quad
         self.lineCount = lineCount
         self.confidence = confidence
     }
@@ -163,26 +264,78 @@ enum TextBlockGrouping {
     /// 同段内换行的行高比通常在 1.15 以内（差异只来自升降部），标题与正文一般 ≥1.5，
     /// 1.4 落在两者之间。
     static let maxLineHeightRatio: CGFloat = 1.4
+    /// 单块行数的病态上限。这不是版面设计上的限制——真实段落到不了这个数——
+    /// 而是万一前面所有判据都被绕过时，别让一块吞掉整页的兜底。
+    static let maxLinesPerBlock = 60
+
+    /// 阅读顺序：自上而下，同一行带内自左而右。
+    ///
+    /// 分两步做，而不是写成一个带容差的比较器。带容差的比较器会产生
+    /// A≈B、B≈C 却 A≉C 的非传递关系，那不是严格弱序——`sorted` 在这种比较器下
+    /// 结果**未定义**，同一张图两次识别可能得到不同的行序，顺序合并随后就在
+    /// 一个非阅读序的序列上走。这正是"竖屏有时候正常有时候不对"的来源。
+    ///
+    /// 第一步按顶边排全序（无容差，严格弱序成立）；第二步单趟扫描切分行带，
+    /// 容差在扫描里用而不在比较里用，于是既保留了"同一行按水平位置排"，
+    /// 又不留下未定义行为。
+    static func readingOrder(_ lines: [RecognizedTextBlock]) -> [RecognizedTextBlock] {
+        let byTop = lines.sorted { lhs, rhs in
+            let lhsTop = lhs.metricsQuad.boundingBox.maxY
+            let rhsTop = rhs.metricsQuad.boundingBox.maxY
+            if lhsTop != rhsTop { return lhsTop > rhsTop }
+            return lhs.metricsQuad.boundingBox.minX < rhs.metricsQuad.boundingBox.minX
+        }
+
+        var rows: [[RecognizedTextBlock]] = []
+        for line in byTop {
+            // 与本行带的**锚行**比，不与上一行比：逐行放宽会让行带顺着一串
+            // 各自合格的小台阶一路滑下去。
+            if let anchor = rows.last?.first,
+               anchor.metricsQuad.boundingBox.maxY - line.metricsQuad.boundingBox.maxY
+                <= min(anchor.metricsQuad.uprightHeight, line.metricsQuad.uprightHeight) * 0.5 {
+                rows[rows.count - 1].append(line)
+            } else {
+                rows.append([line])
+            }
+        }
+
+        return rows.flatMap { row in
+            row.sorted { $0.metricsQuad.boundingBox.minX < $1.metricsQuad.boundingBox.minX }
+        }
+    }
+
+    /// 一行有没有"内容"——至少要有一个字母、数字或表意文字。
+    ///
+    /// OCR 会把反光、划痕、logo 边缘认成一两个标点（真机实测出过 `:` 和 `)`）。
+    /// 这种块照样会被贴一张有底色的贴片上去，在照片上就是一坨没有字的怪东西——
+    /// 用户截图里那个云朵状色块就是两个这样的块叠在一起。
+    /// 纯标点的"行"不可能是需要翻译的文字，在进合并之前就丢掉。
+    static func carriesContent(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            CharacterSet.alphanumerics.contains(scalar)
+                || (0x3040...0x30FF).contains(scalar.value)   // 假名
+                || (0x3400...0x4DBF).contains(scalar.value)   // 扩展 A
+                || (0x4E00...0x9FFF).contains(scalar.value)   // 统一表意
+                || (0xAC00...0xD7AF).contains(scalar.value)   // 谚文
+        }
+    }
 
     /// 输入为单行块（Vision 一个 observation 一行），输出为合并后的段落块。
     /// 行序按 Vision 坐标自上而下（y 降序），同高按 x 升序。
     static func group(lines: [RecognizedTextBlock]) -> [RecognizedTextBlock] {
-        let sorted = lines.sorted { lhs, rhs in
-            let lhsTop = lhs.quad.boundingBox.maxY
-            let rhsTop = rhs.quad.boundingBox.maxY
-            // 顶边差不足一行高视为同一行，改按水平位置排。
-            if abs(lhsTop - rhsTop) > min(lhs.quad.uprightHeight, rhs.quad.uprightHeight) * 0.5 {
-                return lhsTop > rhsTop
-            }
-            return lhs.quad.boundingBox.minX < rhs.quad.boundingBox.minX
-        }
+        let sorted = readingOrder(lines.filter { carriesContent($0.text) })
 
         var blocks: [RecognizedTextBlock] = []
         var pendingLines: [RecognizedTextBlock] = []
+        // 累积并集随扫描增量维护；每行重算一遍是 O(n²)。
+        // 两个框各并各的：显示框并出去给叠加层，判据框并了留给下一轮合并用。
+        var pendingQuad: TextQuad?
+        var pendingMetricsQuad: TextQuad?
 
         func flush() {
-            guard let first = pendingLines.first else { return }
-            let quad = pendingLines.dropFirst().reduce(first.quad) { $0.union($1.quad) }
+            guard !pendingLines.isEmpty,
+                  let quad = pendingQuad,
+                  let metricsQuad = pendingMetricsQuad else { return }
             let text = pendingLines.map(\.text).reduce(into: "") { joined, line in
                 joined = joined.isEmpty ? line : join(joined, line)
             }
@@ -190,38 +343,73 @@ enum TextBlockGrouping {
             blocks.append(RecognizedTextBlock(
                 text: text,
                 quad: quad,
+                metricsQuad: metricsQuad,
                 lineCount: pendingLines.count,
                 confidence: confidence
             ))
             pendingLines = []
+            pendingQuad = nil
+            pendingMetricsQuad = nil
         }
 
         for line in sorted {
-            if let previous = pendingLines.last, !belongsToSameBlock(previous, line) {
+            if let previous = pendingLines.last,
+               !belongsToSameBlock(previous, line) || !belongsToBlock(pendingLines, line: line) {
                 flush()
             }
             pendingLines.append(line)
+            pendingQuad = pendingQuad.map { $0.union(line.quad) } ?? line.quad
+            pendingMetricsQuad = pendingMetricsQuad.map { $0.union(line.metricsQuad) } ?? line.metricsQuad
         }
         flush()
         return blocks
     }
 
-    static func belongsToSameBlock(_ lhs: RecognizedTextBlock, _ rhs: RecognizedTextBlock) -> Bool {
-        guard abs(lhs.quad.angle - rhs.quad.angle) <= maxAngleDelta else { return false }
+    /// 逐对判据之外，新行还要与**已累积的整块**相容。
+    ///
+    /// 只跟上一行比，块会顺着一串"每一对都刚好合格"的行漂走：行高每行变一点、
+    /// 栏位每行偏一点，十几行之后首尾已是毫不相干的两段，中间却没有任何一步不合格。
+    /// 而 `union` 取四角最外侧——一次误连就把中间所有东西一起圈进同一个框，
+    /// 于是一块盖住大半张照片。
+    static func belongsToBlock(_ lines: [RecognizedTextBlock], line: RecognizedTextBlock) -> Bool {
+        guard lines.count < maxLinesPerBlock else { return false }
+        guard let anchor = lines.first else { return true }
 
-        let heights = [lhs.quad.uprightHeight, rhs.quad.uprightHeight]
+        // 行高与块内**首行**比而非上一行：同段各行字号本就一致，
+        // 以标题起头的块因此挡得住紧随其后的正文。
+        let heights = [anchor.metricsQuad.uprightHeight, line.metricsQuad.uprightHeight]
         guard let shorter = heights.min(), let taller = heights.max(), shorter > 0,
               taller / shorter <= maxLineHeightRatio else {
             return false
         }
 
-        let lhsBox = lhs.quad.boundingBox
-        let rhsBox = rhs.quad.boundingBox
+        // 水平投影同样与首行比。**不能**改成与已累积的并集比：并集只会越长越宽，
+        // 逐行右移的阶梯反而更容易通过它，等于没设防。
+        let anchorBox = anchor.metricsQuad.boundingBox
+        let lineBox = line.metricsQuad.boundingBox
+        let overlap = min(anchorBox.maxX, lineBox.maxX) - max(anchorBox.minX, lineBox.minX)
+        let narrower = min(anchorBox.width, lineBox.width)
+        guard narrower > 0, overlap / narrower >= minHorizontalOverlapRatio else { return false }
+
+        return true
+    }
+
+    static func belongsToSameBlock(_ lhs: RecognizedTextBlock, _ rhs: RecognizedTextBlock) -> Bool {
+        guard abs(lhs.metricsQuad.angle - rhs.metricsQuad.angle) <= maxAngleDelta else { return false }
+
+        let heights = [lhs.metricsQuad.uprightHeight, rhs.metricsQuad.uprightHeight]
+        guard let shorter = heights.min(), let taller = heights.max(), shorter > 0,
+              taller / shorter <= maxLineHeightRatio else {
+            return false
+        }
+
+        let lhsBox = lhs.metricsQuad.boundingBox
+        let rhsBox = rhs.metricsQuad.boundingBox
         let overlap = min(lhsBox.maxX, rhsBox.maxX) - max(lhsBox.minX, rhsBox.minX)
         let narrower = min(lhsBox.width, rhsBox.width)
         guard narrower > 0, overlap / narrower >= minHorizontalOverlapRatio else { return false }
 
-        let lineHeight = max(lhs.quad.uprightHeight, rhs.quad.uprightHeight)
+        let lineHeight = max(lhs.metricsQuad.uprightHeight, rhs.metricsQuad.uprightHeight)
         guard lineHeight > 0 else { return false }
         // 上一行底边到下一行顶边的空隙；重叠（负值）自然通过。
         let gap = lhsBox.minY - rhsBox.maxY

@@ -582,11 +582,14 @@ private struct PhotoBlockDetailView: View {
             SectionLabel(text: String(localized: "译文"))
                 .padding(.bottom, 8)
 
-            if block.failed {
+            if let failure = block.failure {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("翻译失败，请重试")
+                    // 显示真实原因。"令牌不对""配额用完""网络断了""语言包没装"
+                    // 各要用户做不同的事，缩成同一句"翻译失败"等于什么都没说。
+                    Text(failure.errorDescription ?? String(localized: "翻译失败，请重试"))
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(AppTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button(action: onRetry) {
                         Text("重试")
                             .font(.system(size: 13, weight: .semibold))
