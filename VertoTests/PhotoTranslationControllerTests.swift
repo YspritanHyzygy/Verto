@@ -61,7 +61,10 @@ private final class StubCaptureSource: PhotoCaptureSource {
     func setDisplayZoomFactor(_ factor: CGFloat) { requestedZoomFactor = factor }
     func setPreviewFrozen(_ frozen: Bool) { isPreviewFrozen = frozen }
 
-    func capturePhoto() async throws -> UIImage {
+    /// 测试要摆布"这张照片歪了几格"，所以开成可写的。
+    var contentQuarterTurns = 0
+
+    func capturePhoto() async throws -> CapturedPhoto {
         captureCount += 1
         if holdsCapture {
             await withCheckedContinuation { continuation in
@@ -71,10 +74,12 @@ private final class StubCaptureSource: PhotoCaptureSource {
             isCaptureSuspended = false
         }
         if let captureError { throw captureError }
-        return UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { context in
+        // 特意不是正方形：这样"照片有没有被偷偷转过"在尺寸上就看得出来。
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 20)).image { context in
             UIColor.white.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 20))
         }
+        return CapturedPhoto(image: image, contentQuarterTurns: contentQuarterTurns)
     }
 }
 
@@ -249,6 +254,45 @@ final class PhotoTranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.blocks.map(\.translation), ["译:你好", "译:再见"])
         XCTAssertFalse(controller.blocks.contains { $0.isPending || $0.failed })
         XCTAssertEqual(Set(translation.requests.map(\.text)), ["你好", "再见"])
+    }
+
+    /// 横持拍照：照片保持拍下来的样子，识别框却是在转正后的副本里量的，
+    /// 所以框必须转回原图坐标才贴得上。
+    ///
+    /// 数字写死而不是拿 `rotatedClockwise` 反算——那样只能证明"调用发生过"，
+    /// 证明不了转的方向对。转错方向会得到另外三组坐标里的一组。
+    func testLandscapeCaptureRotatesRecognizedBlocksBackOntoThePhoto() async {
+        let capture = StubCaptureSource()
+        capture.contentQuarterTurns = 1
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("你好", y: 0.6)]),
+            capture: capture
+        )
+
+        controller.capture()
+        await waitUntil({ controller.phase == .done }, "管线没有走到 done")
+
+        XCTAssertEqual(
+            controller.image?.size,
+            CGSize(width: 40, height: 20),
+            "照片被转过了——取景器里什么构图，结果页就该是什么构图"
+        )
+        guard let quad = controller.blocks.first?.quad else {
+            return XCTFail("没有识别块")
+        }
+        XCTAssertEqual(quad.topLeft.x, 0.65, accuracy: 1e-9)
+        XCTAssertEqual(quad.topLeft.y, 0.9, accuracy: 1e-9)
+        XCTAssertEqual(quad.angle, -.pi / 2, accuracy: 1e-9, "译文贴片没有跟着躺下来")
+    }
+
+    /// 竖持不该被这套东西碰到：圈数为 0 时框原样传下去。
+    func testPortraitCaptureLeavesRecognizedBlocksAlone() async {
+        let controller = makeController(recognizer: StubRecognizer(blocks: [block("你好", y: 0.6)]))
+
+        controller.capture()
+        await waitUntil({ controller.phase == .done }, "管线没有走到 done")
+
+        XCTAssertEqual(controller.blocks.first?.quad, block("你好", y: 0.6).quad)
     }
 
     func testBlocksAppearBeforeTranslationsArrive() async {

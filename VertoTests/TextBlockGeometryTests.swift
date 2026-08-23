@@ -32,6 +32,65 @@ final class TextBlockGeometryTests: XCTestCase {
         RecognizedTextBlock(text: text, quad: .upright(x: x, y: y, width: width, height: height))
     }
 
+    /// 造一行，紧框与外扩框分开给——模拟 PP-OCRv6：DB 出的是收缩多边形，
+    /// `unclip_ratio` 再把它上下左右各撑开一截还原成真实字形边界。
+    private func detectedLine(
+        text: String,
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        tightHeight: CGFloat,
+        expandBy: CGFloat
+    ) -> RecognizedTextBlock {
+        RecognizedTextBlock(
+            text: text,
+            quad: .upright(
+                x: x - expandBy,
+                y: y - expandBy,
+                width: width + expandBy * 2,
+                height: tightHeight + expandBy * 2
+            ),
+            metricsQuad: .upright(x: x, y: y, width: width, height: tightHeight)
+        )
+    }
+
+    // MARK: - 两个框各司其职
+
+    /// 合并出来的块必须带**能盖住原文**的那个框。
+    ///
+    /// 这里防的是一次真实回归：为了让阈值口径一致，块的 quad 曾被整个换成紧框，
+    /// 于是贴片按收缩框画，只压住字的中间一条，上下都露着原文。
+    /// 收缩框只配当尺子，不配当画布。
+    func testMergedBlockCarriesTheCoveringQuadNotTheTightOne() {
+        let lines = [
+            detectedLine(text: "第一行", x: 0.1, y: 0.5, width: 0.5, tightHeight: 0.02, expandBy: 0.014),
+            detectedLine(text: "第二行", x: 0.1, y: 0.478, width: 0.5, tightHeight: 0.02, expandBy: 0.014)
+        ]
+
+        let blocks = TextBlockGrouping.group(lines: lines)
+
+        XCTAssertEqual(blocks.count, 1, "同段两行没合并")
+        let box = blocks[0].quad.boundingBox
+        // 外扩框的并集：0.464…0.534。紧框的并集只有 0.478…0.52。
+        XCTAssertEqual(box.minY, 0.464, accuracy: 1e-9)
+        XCTAssertEqual(box.height, 0.070, accuracy: 1e-9)
+    }
+
+    /// 而判据读的必须是紧框。
+    ///
+    /// 这两行的紧框间距是行高的 4 倍，明显不同段；但外扩之后间距只剩行高的 1.08 倍，
+    /// 拿外扩框当判据就会把它们并成一块——外扩量随长宽比变化，阈值会跟着每行形状漂移。
+    func testGroupingThresholdsReadTheTightQuad() {
+        let lines = [
+            detectedLine(text: "标题", x: 0.1, y: 0.5, width: 0.5, tightHeight: 0.02, expandBy: 0.014),
+            detectedLine(text: "很靠下的另一段", x: 0.1, y: 0.4, width: 0.5, tightHeight: 0.02, expandBy: 0.014)
+        ]
+
+        let blocks = TextBlockGrouping.group(lines: lines)
+
+        XCTAssertEqual(blocks.count, 2, "隔了 4 倍行高的两行被并成了一块")
+    }
+
     // MARK: - TextQuad
 
     func testUprightQuadReportsZeroAngleAndItsOwnBox() {
@@ -271,6 +330,116 @@ final class TextBlockGeometryTests: XCTestCase {
         ]
 
         XCTAssertEqual(TextBlockGrouping.group(lines: lines).first?.confidence, 0.4)
+    }
+
+    func testStaircaseDriftDoesNotChainIntoOneBlock() {
+        // 每行右移一点点，逐对都刚好过 30% 重叠线，四行之后首尾已经毫不相干。
+        // 只跟上一行比就会把它们串成一块，`union` 再把中间整片圈进同一个框。
+        let lines = (0..<4).map { index in
+            line(
+                text: "L\(index)",
+                x: 0.05 + CGFloat(index) * 0.20,
+                y: 0.86 - CGFloat(index) * 0.06,
+                width: 0.30,
+                height: 0.04
+            )
+        }
+
+        // 前提：逐对判据确实拦不住，所以这个用例考的是块级判据。
+        XCTAssertTrue(TextBlockGrouping.belongsToSameBlock(lines[0], lines[1]))
+        XCTAssertTrue(TextBlockGrouping.belongsToSameBlock(lines[1], lines[2]))
+
+        let blocks = TextBlockGrouping.group(lines: lines)
+
+        XCTAssertGreaterThan(blocks.count, 1, "阶梯式漂移不该串成一块")
+        XCTAssertNil(
+            blocks.first(where: { $0.quad.boundingBox.width > 0.8 }),
+            "没有哪一块该横跨整幅画面"
+        )
+    }
+
+    func testLongUniformParagraphStillMergesIntoOneBlock() {
+        // 刹车不能误伤真实段落：同栏、同字号、行距正常的十二行仍是一段，
+        // 逐行翻译会把一句话切碎。
+        let lines = (0..<12).map { index in
+            line(
+                text: "line\(index)",
+                x: 0.12,
+                y: 0.90 - CGFloat(index) * 0.055,
+                width: 0.60,
+                height: 0.04
+            )
+        }
+
+        let blocks = TextBlockGrouping.group(lines: lines)
+
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks.first?.lineCount, 12)
+    }
+
+    func testGradualFontSizeDriftDoesNotChainIntoOneBlock() {
+        // 字号每行缩一点，逐对都在 1.4 倍以内，四行之后首尾差了 1.6 倍——
+        // 那已经是两个层级，不是同一段的换行。横向的阶梯漂移由上一个用例覆盖，
+        // 这个考的是纵向（字号）的同一种漂移。
+        let heights: [CGFloat] = [0.050, 0.042, 0.036, 0.031]
+        let tops: [CGFloat] = [0.800, 0.740, 0.690, 0.640]
+        let lines = zip(heights, tops).enumerated().map { index, pair in
+            line(text: "L\(index)", x: 0.14, y: pair.1, width: 0.60, height: pair.0)
+        }
+
+        // 前提：逐对判据全都放行，所以拦下它的只能是块级判据。
+        for index in 0..<(lines.count - 1) {
+            XCTAssertTrue(
+                TextBlockGrouping.belongsToSameBlock(lines[index], lines[index + 1]),
+                "第 \(index) 与 \(index + 1) 行本就该逐对合格，用例前提不成立了"
+            )
+        }
+
+        let blocks = TextBlockGrouping.group(lines: lines)
+
+        XCTAssertGreaterThan(blocks.count, 1, "字号一路漂移不该串成一块")
+        XCTAssertFalse(
+            TextBlockGrouping.belongsToBlock(Array(lines.prefix(3)), line: lines[3]),
+            "首行 0.050 与末行 0.031 差 1.6 倍，块级判据必须拦下"
+        )
+    }
+
+    func testReadingOrderIsStableRegardlessOfInputOrder() {
+        // 顶边两两相差 0.015、容差 0.02：A≈B、B≈C 却 A≉C。带容差的比较器在这种
+        // 输入上不是严格弱序，`sorted` 的结果未定义——同一张图两次识别可能得到
+        // 不同的行序。这是"竖屏有时候正常有时候不对"的来源。
+        let a = line(text: "A", x: 0.60, y: 0.460, width: 0.20, height: 0.04)
+        let b = line(text: "B", x: 0.30, y: 0.445, width: 0.20, height: 0.04)
+        let c = line(text: "C", x: 0.10, y: 0.430, width: 0.20, height: 0.04)
+
+        let permutations = [[a, b, c], [c, b, a], [b, a, c], [a, c, b], [c, a, b], [b, c, a]]
+        let orders = permutations.map { TextBlockGrouping.readingOrder($0).map(\.text) }
+
+        XCTAssertEqual(
+            Set(orders).count, 1,
+            "输入次序不该影响阅读序，实际得到 \(Set(orders))"
+        )
+    }
+
+    func testPunctuationOnlyLinesAreDroppedBeforeGrouping() {
+        // 反光和 logo 边缘会被 OCR 认成一两个标点。这种块照样会被贴一张有底色的贴片，
+        // 在照片上就是一坨没有字的怪色块——真机截图里那个云朵状的东西就是两个叠在一起。
+        let junk = line(text: ":", x: 0.10, y: 0.60, width: 0.04, height: 0.02)
+        let alsoJunk = line(text: "…）", x: 0.20, y: 0.40, width: 0.05, height: 0.02)
+        let real = line(text: "营业时间", x: 0.10, y: 0.20, width: 0.40, height: 0.04)
+
+        let blocks = TextBlockGrouping.group(lines: [junk, alsoJunk, real])
+
+        XCTAssertEqual(blocks.map(\.text), ["营业时间"])
+    }
+
+    func testContentDetectionAcceptsEveryScriptTheAppTranslates() {
+        for text in ["A", "9", "中", "あ", "한", "café"] {
+            XCTAssertTrue(TextBlockGrouping.carriesContent(text), "\(text) 被误判为无内容")
+        }
+        for text in [":", " ", "", "…）", "——", "•"] {
+            XCTAssertFalse(TextBlockGrouping.carriesContent(text), "\(text) 应当算无内容")
+        }
     }
 
     // MARK: - Vision 语言码

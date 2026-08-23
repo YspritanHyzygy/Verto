@@ -19,7 +19,8 @@
 		01A000000000000000000110 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000010 /* HistoryView.swift */; };
 		01A000000000000000000111 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000012 /* Assets.xcassets */; };
 		01A000000000000000000112 /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000013 /* TranslationService.swift */; };
-		01A000000000000000000113 /* GoogleTranslateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000014 /* GoogleTranslateService.swift */; };
+		01A000000000000000000113 /* TranslationRelayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000014 /* TranslationRelayService.swift */; };
+		01A000000000000000000119 /* AppleBackedTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000084 /* AppleBackedTranslationService.swift */; };
 		01A000000000000000000114 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000015 /* AppSettings.swift */; };
 		01A000000000000000000115 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* SettingsView.swift */; };
 		01A000000000000000000515 /* OCRModelSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000415 /* OCRModelSection.swift */; };
@@ -50,7 +51,8 @@
 		01A000000000000000000506 /* TranslationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000406 /* TranslationOverlay.swift */; };
 		01B000000000000000000101 /* VertoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B000000000000000000001 /* VertoUITests.swift */; };
 		01C000000000000000000101 /* TranslationSessionDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000001 /* TranslationSessionDraftTests.swift */; };
-		01C000000000000000000102 /* GoogleTranslateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000002 /* GoogleTranslateServiceTests.swift */; };
+		01C000000000000000000102 /* TranslationRelayServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000002 /* TranslationRelayServiceTests.swift */; };
+		01C0000000000000000001A0 /* CaptureOrientationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C0000000000000000000A0 /* CaptureOrientationTests.swift */; };
 		01C000000000000000000103 /* AppSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000003 /* AppSettingsTests.swift */; };
 		01C000000000000000000104 /* VoiceConversationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000004 /* VoiceConversationControllerTests.swift */; };
 		01C000000000000000000105 /* VoiceTranslationRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000005 /* VoiceTranslationRouterTests.swift */; };
@@ -97,7 +99,9 @@
 		01A000000000000000000011 /* Verto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Verto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		01A000000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		01A000000000000000000013 /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationService.swift; sourceTree = "<group>"; };
-		01A000000000000000000014 /* GoogleTranslateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleTranslateService.swift; sourceTree = "<group>"; };
+		01A000000000000000000014 /* TranslationRelayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationRelayService.swift; sourceTree = "<group>"; };
+		01A000000000000000000084 /* AppleBackedTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackedTranslationService.swift; sourceTree = "<group>"; };
+		01A000000000000000000085 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = SOURCE_ROOT; };
 		01A000000000000000000015 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		01A000000000000000000016 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		01A000000000000000000415 /* OCRModelSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelSection.swift; sourceTree = "<group>"; };
@@ -129,7 +133,8 @@
 		01B000000000000000000001 /* VertoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VertoUITests.swift; sourceTree = "<group>"; };
 		01B000000000000000000011 /* VertoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		01C000000000000000000001 /* TranslationSessionDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSessionDraftTests.swift; sourceTree = "<group>"; };
-		01C000000000000000000002 /* GoogleTranslateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleTranslateServiceTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000002 /* TranslationRelayServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationRelayServiceTests.swift; sourceTree = "<group>"; };
+		01C0000000000000000000A0 /* CaptureOrientationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureOrientationTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000003 /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000004 /* VoiceConversationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceConversationControllerTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000005 /* VoiceTranslationRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranslationRouterTests.swift; sourceTree = "<group>"; };
@@ -174,6 +179,7 @@
 		01A000000000000000000030 = {
 			isa = PBXGroup;
 			children = (
+				01A000000000000000000085 /* Secrets.xcconfig */,
 				01A000000000000000000031 /* Verto */,
 				01C000000000000000000031 /* VertoTests */,
 				01B000000000000000000031 /* VertoUITests */,
@@ -190,7 +196,8 @@
 				01A000000000000000000004 /* Models.swift */,
 				01A000000000000000000005 /* Components.swift */,
 				01A000000000000000000013 /* TranslationService.swift */,
-				01A000000000000000000014 /* GoogleTranslateService.swift */,
+				01A000000000000000000014 /* TranslationRelayService.swift */,
+				01A000000000000000000084 /* AppleBackedTranslationService.swift */,
 				01A000000000000000000015 /* AppSettings.swift */,
 				01A000000000000000000017 /* AppIcon.icon */,
 				01A000000000000000000012 /* Assets.xcassets */,
@@ -275,7 +282,8 @@
 			isa = PBXGroup;
 			children = (
 				01C000000000000000000001 /* TranslationSessionDraftTests.swift */,
-				01C000000000000000000002 /* GoogleTranslateServiceTests.swift */,
+				01C000000000000000000002 /* TranslationRelayServiceTests.swift */,
+				01C0000000000000000000A0 /* CaptureOrientationTests.swift */,
 				01C000000000000000000003 /* AppSettingsTests.swift */,
 				01C000000000000000000004 /* VoiceConversationControllerTests.swift */,
 				01C000000000000000000005 /* VoiceTranslationRouterTests.swift */,
@@ -440,7 +448,8 @@
 				01A000000000000000000109 /* LanguagePickerView.swift in Sources */,
 				01A000000000000000000110 /* HistoryView.swift in Sources */,
 				01A000000000000000000112 /* TranslationService.swift in Sources */,
-				01A000000000000000000113 /* GoogleTranslateService.swift in Sources */,
+				01A000000000000000000113 /* TranslationRelayService.swift in Sources */,
+				01A000000000000000000119 /* AppleBackedTranslationService.swift in Sources */,
 				01A000000000000000000114 /* AppSettings.swift in Sources */,
 				01A000000000000000000115 /* SettingsView.swift in Sources */,
 				01A000000000000000000515 /* OCRModelSection.swift in Sources */,
@@ -482,7 +491,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				01C000000000000000000101 /* TranslationSessionDraftTests.swift in Sources */,
-				01C000000000000000000102 /* GoogleTranslateServiceTests.swift in Sources */,
+				01C000000000000000000102 /* TranslationRelayServiceTests.swift in Sources */,
+				01C0000000000000000001A0 /* CaptureOrientationTests.swift in Sources */,
 				01C000000000000000000103 /* AppSettingsTests.swift in Sources */,
 				01C000000000000000000104 /* VoiceConversationControllerTests.swift in Sources */,
 				01C000000000000000000105 /* VoiceTranslationRouterTests.swift in Sources */,
@@ -634,6 +644,7 @@
 		};
 		01A000000000000000000082 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 01A000000000000000000085 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -643,6 +654,7 @@
 				DEVELOPMENT_TEAM = Z42T9RCB38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Verto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "译境";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。";
@@ -671,6 +683,7 @@
 		};
 		01A000000000000000000083 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 01A000000000000000000085 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -680,6 +693,7 @@
 				DEVELOPMENT_TEAM = Z42T9RCB38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Verto/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "译境";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。";

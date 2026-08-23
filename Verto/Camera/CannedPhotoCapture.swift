@@ -93,8 +93,9 @@ final class CannedPhotoCaptureSource: PhotoCaptureSource {
     /// 无取景层可冻。
     func setPreviewFrozen(_ frozen: Bool) {}
 
-    func capturePhoto() async throws -> UIImage {
-        CannedSignFixture.renderImage()
+    func capturePhoto() async throws -> CapturedPhoto {
+        // 合成图本来就是正立的，没有歪可言。
+        CapturedPhoto(image: CannedSignFixture.renderImage())
     }
 }
 

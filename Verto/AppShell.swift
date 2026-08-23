@@ -42,11 +42,14 @@ struct AppShell: View {
             service: configuration.useCannedTranslation ? CannedTranslationService() : nil
         ))
 
-        let provider = AppleTranslationProvider()
+        let provider = AppleTranslationProvider.shared
         _appleTranslationProvider = State(initialValue: provider)
+        // 语音页仍是「苹果优先、失败回退」——那里选苹果是为了 350ms partial 重译的
+        // 低延迟，走网络每条都要一个来回。回退项换成与文字/相机页同一个解析结果，
+        // 否则它还指着已经被拦截的免费接口，整条回退链是死的。
         let voiceTranslation: any TranslationService = configuration.useCannedTranslation
             ? CannedTranslationService()
-            : VoiceTranslationRouter(apple: provider, fallback: GoogleTranslateService())
+            : VoiceTranslationRouter(apple: provider, fallback: settings.translationEngine.makeService())
         var voiceTiming = VoiceConversationController.Timing()
         let transcriptionFactory: @MainActor () async -> any VoiceTranscriptionService
         var voiceSynthesizer: (any SpeechSynthesizing)?

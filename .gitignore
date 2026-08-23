@@ -9,3 +9,4 @@ xcuserdata/
 .claude/
 *.xcresult
 archive/
+Secrets.local.xcconfig

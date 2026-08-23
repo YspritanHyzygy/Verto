@@ -140,8 +140,8 @@ enum ImageColorSampler {
     /// 采样网格边长。取 48 而非更小：细笔画（小字号、瘦体）在粗网格里会被整格
     /// 漏掉，纯底色格子占压倒多数，字色就被稀释成灰的；再大则纯属浪费。
     private static let gridSize = 48
-    /// 采样区在文字框外扩的比例（按框高算）。外扩才能吃到文字周围的底色；
-    /// 0.3 够覆盖常见的字距留白，又不至于吃进隔壁那块文字。
+    /// 采样区在文字框外扩的比例（按**行厚**算，不是按包围盒高）。外扩才能吃到
+    /// 文字周围的底色；0.3 够覆盖常见的字距留白，又不至于吃进隔壁那块文字。
     private static let padRatio: CGFloat = 0.3
     /// 字色取"与底色距离达到本块最大距离这个比例"的那批像素求均值。
     ///
@@ -153,14 +153,25 @@ enum ImageColorSampler {
     /// （纯色区域、过曝），退回保底配色而不是画一块看不见的字。
     private static let minimumContrast = 0.02
 
-    static func palette(for quad: TextQuad, in image: CGImage) -> BlockPalette {
+    /// 采样区：文字框外扩一圈，仍是 Vision 归一化坐标。
+    ///
+    /// 外扩量按 `uprightHeight`（垂直基线的行厚）算，**不能**按 `boundingBox.height` 算。
+    /// 横排文字这两个数相等，所以过去一直没露馅；但横持拍照的框会整体转 90°，
+    /// 包围盒的"高"这时就是**行长**——按它外扩会一口气吃进半张图，底色与字色
+    /// 全被邻近内容稀释成灰的。斜着印的文字同理。
+    static func sampleBox(for quad: TextQuad) -> CGRect? {
         let box = quad.boundingBox
-        guard box.width > 0, box.height > 0 else { return .fallback }
+        guard box.width > 0, box.height > 0 else { return nil }
 
-        let pad = box.height * padRatio
+        let pad = quad.uprightHeight * padRatio
         let padded = box.insetBy(dx: -pad, dy: -pad)
             .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard !padded.isNull, padded.width > 0, padded.height > 0 else { return .fallback }
+        guard !padded.isNull, padded.width > 0, padded.height > 0 else { return nil }
+        return padded
+    }
+
+    static func palette(for quad: TextQuad, in image: CGImage) -> BlockPalette {
+        guard let padded = sampleBox(for: quad) else { return .fallback }
 
         // Vision 原点在左下，CGImage 裁剪坐标原点在左上：翻 y。
         let pixelRect = CGRect(
@@ -383,22 +394,41 @@ private struct ZoomableResultCanvas<Content: View>: UIViewRepresentable {
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onTap = onTap
+        // 译文逐块到达，这一行每次都要跑；下面的几何重置则不能。
         coordinator.hostingController.rootView = content
-        coordinator.hostingController.view.frame = CGRect(origin: .zero, size: canvasSize)
-        scrollView.contentSize = canvasSize
 
+        // 画布尺寸没变就到此为止。UIScrollView 的缩放是给 viewForZooming
+        // 挂 transform 实现的，此时 hostedView.frame 未定义、contentSize 由 scroll view
+        // 自己按 zoomScale 维护——每落一块译文就重写一遍，会把正放大着的画面拽回去。
         guard coordinator.canvasSize != canvasSize || coordinator.viewportSize != viewportSize else {
             return
         }
         coordinator.canvasSize = canvasSize
         coordinator.viewportSize = viewportSize
 
-        // 1× 仍是与取景一致的 aspectFill 初始构图；最小倍率退到 aspectFit，
-        // 所以用户可以缩到整张照片完整出现，而不是被 1× 硬挡住。
-        scrollView.minimumZoomScale = OverlayGeometry.minimumZoomScale(
+        // 先回到 1×，transform 恢复恒等，之后写 frame 才有定义。
+        scrollView.zoomScale = 1
+        coordinator.hostingController.view.frame = CGRect(origin: .zero, size: canvasSize)
+        scrollView.contentSize = canvasSize
+
+        // 最小倍率退到 aspectFit，用户总能缩到整张照片完整出现。
+        let minimumScale = OverlayGeometry.minimumZoomScale(
             canvasSize: canvasSize,
             viewportSize: viewportSize
         )
+        scrollView.minimumZoomScale = minimumScale
+
+        // 常态下 1× 就是与取景一致的 aspectFill 构图。但**横幅的照片放进竖视口**时
+        // （相册里挑一张横图就是这样），aspectFill 会把大半张图推到屏幕外——
+        // 一进来只剩中间一条，译文块大多在屏幕外，得先手动缩小才看得见。
+        // 朝向相反时直接以 aspectFit 开场。
+        //
+        // 相机拍的照片恒为竖幅（取景与照片都固定 90°，横持拍到的是一张躺着的竖图），
+        // 所以这条分支只有相册路径走得到。
+        let imageIsLandscape = canvasSize.width > canvasSize.height
+        let viewportIsLandscape = viewportSize.width > viewportSize.height
+        let initialScale = imageIsLandscape == viewportIsLandscape ? 1 : minimumScale
+        scrollView.zoomScale = initialScale
 
         // 每边留半屏，UIScrollView 自己的边界便正好是“照片任意边到屏幕中心”；
         // 关闭 bounce 后到这里就停，不会继续把画布拖进黑色虚空。
@@ -408,10 +438,10 @@ private struct ZoomableResultCanvas<Content: View>: UIViewRepresentable {
             bottom: viewportSize.height / 2,
             right: viewportSize.width / 2
         )
-        scrollView.zoomScale = 1
+        // 居中要按**缩放后**的画布算：setZoomScale 之后 contentSize 已是 canvasSize × 倍率。
         scrollView.contentOffset = CGPoint(
-            x: (canvasSize.width - viewportSize.width) / 2,
-            y: (canvasSize.height - viewportSize.height) / 2
+            x: (canvasSize.width * initialScale - viewportSize.width) / 2,
+            y: (canvasSize.height * initialScale - viewportSize.height) / 2
         )
     }
 
@@ -487,7 +517,10 @@ private struct TranslationBlockSticker: View {
         Text(block.displayText)
             .font(.system(size: lineHeight * Self.capHeightRatio, weight: .medium))
             .foregroundStyle(palette.foreground)
-            .lineLimit(block.lineCount)
+            // **不按原文行数封顶。** 译文常比原文长（中译英尤其），而框宽是原文的宽度；
+            // 锁死在原文行数上，塞不下的部分会被直接截掉——真机上「执行标准：QB/T 1643-98 使用」
+            // 后面就这么没了。放开行数、让它靠缩放去适配：宁可字小一点，也不能少半句话。
+            .lineLimit(nil)
             .minimumScaleFactor(0.35)
             .multilineTextAlignment(.leading)
             .opacity(block.isPending ? 0.55 : 1)

@@ -148,9 +148,16 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         var lines: [RecognizedTextBlock] = []
         for box in boxes {
             try Task.checkCancellation()
+            // 三处用途，两个框。裁剪与**定位**用外扩框：DB 给的是文字区域的收缩
+            // 多边形，拿它去裁会切掉首尾字母，拿它去贴译文只压得住字的中间一条。
+            // 合并判据用紧框：外扩量随长宽比变化，会把行高比和行距都搅乱。
             guard let crop = canvas.crop(box.corners),
                   let quad = TextDetectionPostProcess.quad(
                     from: box.corners,
+                    mapWidth: canvas.scaledWidth, mapHeight: canvas.scaledHeight
+                  ),
+                  let metricsQuad = TextDetectionPostProcess.quad(
+                    from: box.tightCorners,
                     mapWidth: canvas.scaledWidth, mapHeight: canvas.scaledHeight
                   ) else {
                 continue
@@ -159,7 +166,10 @@ final class PaddleTextRecognitionService: TextRecognitionService {
             let text = read.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
             lines.append(RecognizedTextBlock(
-                text: text, quad: quad, confidence: min(read.confidence, box.score)
+                text: text,
+                quad: quad,
+                metricsQuad: metricsQuad,
+                confidence: min(read.confidence, box.score)
             ))
         }
 

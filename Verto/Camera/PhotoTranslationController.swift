@@ -53,9 +53,13 @@ final class PhotoTranslationController {
         let source: String
         var translation: String
         var isPending: Bool
-        var failed: Bool
+        /// 失败原因。存整个错误而不是一个 Bool——"令牌不对""配额用完""网络断了"
+        /// 各要用户做不同的事，都缩成同一个红叹号等于什么都没说。
+        var failure: TranslationError?
         let quad: TextQuad
         let lineCount: Int
+
+        var failed: Bool { failure != nil }
 
         /// 叠加层与详情页显示的文字：译文没到就先显示原文。
         var displayText: String {
@@ -64,6 +68,9 @@ final class PhotoTranslationController {
     }
 
     private(set) var image: UIImage?
+    /// 当前这张照片里的世界相对正立顺时针歪了几个 90°（见 `CapturedPhoto`）。
+    /// 只有识别那一步用得上；显示与取色永远吃没动过的 `image`。
+    private var imageQuarterTurns = 0
     private(set) var blocks: [TranslatedBlock] = []
     private(set) var phase: Phase = .idle
 
@@ -91,7 +98,10 @@ final class PhotoTranslationController {
     private var generation = 0
     private var pipelineTask: Task<Void, Never>?
     /// 按去重后的原文索引，不按块 id——同一句话在一张图上出现多次只发一次请求。
+    /// 现在只承载块内重试；整页首次翻译走 batchTask。
     private var blockTasks: [String: Task<Void, Never>] = [:]
+    /// 整页一次批量提交。分批由 service 按自己的上限决定，这里只管消费流。
+    private var batchTask: Task<Void, Never>?
 
     init(
         settings: AppSettings,
@@ -192,10 +202,16 @@ final class PhotoTranslationController {
         pipelineTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let photo = try await captureSource.capturePhoto().normalizedUp()
+                let captured = try await captureSource.capturePhoto()
+                let photo = captured.image.normalizedUp()
                 guard generation == self.generation else { return }
                 self.image = photo
-                await self.runRecognition(on: photo, generation: generation)
+                self.imageQuarterTurns = captured.contentQuarterTurns
+                await self.runRecognition(
+                    on: photo,
+                    quarterTurns: captured.contentQuarterTurns,
+                    generation: generation
+                )
             } catch {
                 guard generation == self.generation else { return }
                 self.fail(with: error)
@@ -204,19 +220,33 @@ final class PhotoTranslationController {
     }
 
     /// 相册选图：与拍照走同一条识别管线。
+    ///
+    /// 圈数恒为 0——相册里的图只有 EXIF 一个方向来源，而 `normalizedUp()` 已经把它
+    /// 烘进像素了，再没有第二处能说出"这张歪着"。
     func use(_ photo: UIImage) {
-        let normalized = photo.normalizedUp()
-        let generation = beginNewPass()
-        image = normalized
-        pipelineTask = Task { [weak self] in
-            await self?.runRecognition(on: normalized, generation: generation)
-        }
+        load(photo, quarterTurns: 0)
     }
 
     /// 整页重来：识别失败后按同一张图再跑一遍。
+    ///
+    /// 沿用上次的圈数：重试的是同一张照片，方向不会因为重试而改变。
     func retryRecognition() {
         guard let image else { return }
-        use(image)
+        load(image, quarterTurns: imageQuarterTurns)
+    }
+
+    private func load(_ photo: UIImage, quarterTurns: Int) {
+        let normalized = photo.normalizedUp()
+        let generation = beginNewPass()
+        image = normalized
+        imageQuarterTurns = quarterTurns
+        pipelineTask = Task { [weak self] in
+            await self?.runRecognition(
+                on: normalized,
+                quarterTurns: quarterTurns,
+                generation: generation
+            )
+        }
     }
 
     /// 丢掉当前照片与译文，回到取景。
@@ -234,7 +264,7 @@ final class PhotoTranslationController {
         let text = normalizedSource(of: block)
         // 同一原文的块共用一次翻译，重试自然也是一起重试。
         for index in blocks.indices where normalizedSource(of: blocks[index]) == text {
-            blocks[index].failed = false
+            blocks[index].failure = nil
             blocks[index].isPending = true
         }
         phase = .translating
@@ -262,6 +292,8 @@ final class PhotoTranslationController {
     /// 作废上一轮并领取新的代号。所有异步收尾都拿它和 `generation` 比对。
     private func beginNewPass() -> Int {
         pipelineTask?.cancel()
+        batchTask?.cancel()
+        batchTask = nil
         blockTasks.values.forEach { $0.cancel() }
         blockTasks = [:]
         blocks = []
@@ -269,7 +301,7 @@ final class PhotoTranslationController {
         return generation
     }
 
-    private func runRecognition(on photo: UIImage, generation: Int) async {
+    private func runRecognition(on photo: UIImage, quarterTurns: Int, generation: Int) async {
         // 进门先验代号：上一轮的任务被 cancel 后仍可能跑到这里一次，
         // 不验会把已经作废的那轮的 phase 写回去。
         guard generation == self.generation else { return }
@@ -283,8 +315,11 @@ final class PhotoTranslationController {
         // catalog 内部按 activeModel 缓存，重复解析不会反复加载 Core ML 模型。
         let recognizer = modelCatalog?.makeRecognizer(system: systemRecognizer) ?? systemRecognizer
         let languages = recognitionLanguages
+        // 照片保持拍下来的样子，只把送进识别器的这份副本转正；
+        // 出来的框再按同样的圈数转回原图坐标，叠加层与取色才对得上。
+        let upright = OCRImageStraightening.straighten(cgImage, quarterTurnsClockwise: quarterTurns)
         do {
-            let recognized = try await recognizer.recognizeText(in: cgImage, languages: languages)
+            let recognized = try await recognizer.recognizeText(in: upright, languages: languages)
             guard generation == self.generation else { return }
             blocks = recognized.map {
                 TranslatedBlock(
@@ -292,8 +327,8 @@ final class PhotoTranslationController {
                     source: $0.text,
                     translation: "",
                     isPending: true,
-                    failed: false,
-                    quad: $0.quad,
+                    failure: nil,
+                    quad: $0.quad.rotatedClockwise(quarterTurns: quarterTurns),
                     lineCount: $0.lineCount
                 )
             }
@@ -308,48 +343,89 @@ final class PhotoTranslationController {
 
     private func retranslateAll() {
         let generation = self.generation
+        batchTask?.cancel()
+        batchTask = nil
         blockTasks.values.forEach { $0.cancel() }
         blockTasks = [:]
         for index in blocks.indices {
             blocks[index].translation = ""
             blocks[index].isPending = true
-            blocks[index].failed = false
+            blocks[index].failure = nil
         }
         phase = .translating
         startTranslations(generation: generation)
     }
 
     private func startTranslations(generation: Int) {
-        // 按原文去重后**每种文本**一个独立任务：先到先上屏，单块失败只影响自己
-        // （块内可重试），不拖垮整页。
-        //
-        // 去重必须在派发前做，不能只靠 cache：一张图上的所有块是同一批并发发出的，
+        // 去重必须在派发前做，不能只靠 cache：一张图上的所有块是同一批发出去的，
         // 谁都还没回来，缓存自然全是 miss——重复的「禁止吸烟」会照发三次。
+        var pending: [String] = []
         for text in Set(blocks.map(normalizedSource)) {
-            translate(text: text, generation: generation)
+            if text.isEmpty {
+                finish(text: text, translation: text, failure: nil, generation: generation)
+            } else if let cached = cache.result(for: cacheKey(for: text)) {
+                // 跨轮复用：重拍同一块牌子、或换回上一个语言对时命中这里。
+                finish(text: text, translation: cached.text, failure: nil, generation: generation)
+            } else {
+                pending.append(text)
+            }
         }
-        settleIfFinished()
+        guard !pending.isEmpty else {
+            settleIfFinished()
+            return
+        }
+
+        // 整页一次提交，service 按自己的上限分批；每批回来就填一批。
+        // 改造前是每种文本一个独立请求，一张密字图能瞬时打几十个连接。
+        let service = activeService
+        let source = sourceLanguage
+        let target = targetLanguage
+        batchTask?.cancel()
+        batchTask = Task { [weak self] in
+            var settled: Set<String> = []
+            for await element in service.translateBatch(pending, source: source, target: target) {
+                guard let self, generation == self.generation else { return }
+                settled.insert(element.text)
+                switch element.result {
+                case .success(let result):
+                    self.cache.store(result, for: self.cacheKey(for: element.text))
+                    self.finish(text: element.text, translation: result.text, failure: nil, generation: generation)
+                case .failure(let error):
+                    self.finish(text: element.text, translation: "", failure: error, generation: generation)
+                }
+            }
+            // 流结束了却还有没交代的条目：块会永远停在 pending，phase 也永远到不了
+            // .done。宁可报一次失败让用户能重试，也不要一个转不完的圈。
+            guard let self, generation == self.generation, !Task.isCancelled else { return }
+            for text in pending where !settled.contains(text) {
+                self.finish(text: text, translation: "", failure: .invalidResponse, generation: generation)
+            }
+        }
     }
 
     private func normalizedSource(of block: TranslatedBlock) -> String {
         block.source.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func translate(text: String, generation: Int) {
-        guard !text.isEmpty else {
-            finish(text: text, translation: text, failed: false, generation: generation)
-            return
-        }
-
-        let key = TranslationMemoryCache.Key(
+    private func cacheKey(for text: String) -> TranslationMemoryCache.Key {
+        TranslationMemoryCache.Key(
             engineID: settings.translationEngine.rawValue,
             sourceCode: sourceLanguage.code,
             targetCode: targetLanguage.code,
             text: text
         )
-        // 跨轮复用：重拍同一块牌子、或换回上一个语言对时命中这里。
+    }
+
+    /// 单条翻译，只用于块内重试——整页首次翻译走 `startTranslations` 的批量路径。
+    private func translate(text: String, generation: Int) {
+        guard !text.isEmpty else {
+            finish(text: text, translation: text, failure: nil, generation: generation)
+            return
+        }
+
+        let key = cacheKey(for: text)
         if let cached = cache.result(for: key) {
-            finish(text: text, translation: cached.text, failed: false, generation: generation)
+            finish(text: text, translation: cached.text, failure: nil, generation: generation)
             return
         }
 
@@ -361,22 +437,27 @@ final class PhotoTranslationController {
                 let result = try await service.translate(request)
                 guard let self, generation == self.generation else { return }
                 self.cache.store(result, for: key)
-                self.finish(text: text, translation: result.text, failed: false, generation: generation)
+                self.finish(text: text, translation: result.text, failure: nil, generation: generation)
             } catch is CancellationError {
             } catch {
                 guard let self, generation == self.generation else { return }
-                self.finish(text: text, translation: "", failed: true, generation: generation)
+                self.finish(
+                    text: text,
+                    translation: "",
+                    failure: error as? TranslationError ?? .network,
+                    generation: generation
+                )
             }
         }
     }
 
-    private func finish(text: String, translation: String, failed: Bool, generation: Int) {
+    private func finish(text: String, translation: String, failure: TranslationError?, generation: Int) {
         guard generation == self.generation else { return }
         blockTasks[text] = nil
         for index in blocks.indices where normalizedSource(of: blocks[index]) == text {
             blocks[index].translation = translation
             blocks[index].isPending = false
-            blocks[index].failed = failed
+            blocks[index].failure = failure
         }
         settleIfFinished()
     }

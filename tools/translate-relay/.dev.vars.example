@@ -1,0 +1,15 @@
+# 本地 `wrangler dev` 用。复制成 .dev.vars 再填真值——.dev.vars 已被 gitignore。
+# 线上不读这个文件，线上用 `wrangler secret put`。
+
+# 服务账号 JSON 里的 client_email
+GOOGLE_SA_EMAIL="verto-relay@your-project.iam.gserviceaccount.com"
+
+# 服务账号 JSON 里的 private_key，整段照抄（含 BEGIN/END 行）。
+# JSON 里的换行是字面量 \n，保持原样即可，代码会还原。
+GOOGLE_SA_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEv...\n-----END PRIVATE KEY-----\n"
+
+# 服务账号 JSON 里的 project_id
+GCP_PROJECT_ID="your-project"
+
+# App 与中转之间的共享密钥。随便生成一串长的：openssl rand -base64 32
+VERTO_SHARED_TOKEN="replace-me"

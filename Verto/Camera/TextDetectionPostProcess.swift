@@ -49,8 +49,20 @@ enum TextDetectionPostProcess {
 
     /// 一个旋转矩形，四角按左上/右上/右下/左下排列（像素坐标，y 向下）。
     struct RotatedBox: Equatable {
+        /// **外扩后**的四角，用于裁剪送识别——DB 的标注框训练时被收缩过，
+        /// 不扩回去会切掉每行首尾的字母。
         var corners: [CGPoint]
+        /// **外扩前**的四角。行高、行距、倾角这些用于判断"是否同一段"的量必须取自它：
+        /// 外扩距离是 `w·h·ratio / (2(w+h))`，跟长宽比有关（长行约 0.7h、短行更少），
+        /// 拿外扩框做判据等于让阈值随每行的形状漂移。
+        var tightCorners: [CGPoint]
         var score: Float
+
+        init(corners: [CGPoint], tightCorners: [CGPoint]? = nil, score: Float) {
+            self.corners = corners
+            self.tightCorners = tightCorners ?? corners
+            self.score = score
+        }
 
         var minimumSide: CGFloat {
             let a = hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y)
@@ -97,7 +109,8 @@ enum TextDetectionPostProcess {
             )
             guard score >= boxScoreThreshold else { continue }
 
-            box = RotatedBox(corners: expand(box.corners), score: score)
+            let tight = box.corners
+            box = RotatedBox(corners: expand(tight), tightCorners: tight, score: score)
             guard box.minimumSide >= minimumSideLength else { continue }
             result.append(clamp(box, width: w, height: h))
             if result.count >= maximumBoxes { break }
@@ -271,11 +284,15 @@ enum TextDetectionPostProcess {
     }
 
     private static func clamp(_ box: RotatedBox, width: Int, height: Int) -> RotatedBox {
-        RotatedBox(
-            corners: box.corners.map {
+        func clampCorners(_ corners: [CGPoint]) -> [CGPoint] {
+            corners.map {
                 CGPoint(x: min(max($0.x, 0), CGFloat(width - 1)),
                         y: min(max($0.y, 0), CGFloat(height - 1)))
-            },
+            }
+        }
+        return RotatedBox(
+            corners: clampCorners(box.corners),
+            tightCorners: clampCorners(box.tightCorners),
             score: box.score
         )
     }
