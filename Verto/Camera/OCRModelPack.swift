@@ -19,7 +19,9 @@ import Foundation
 /// 高精度识别引擎的模型档位。
 ///
 /// 三档都是 PP-OCRv6（转成 Core ML fp16），差别只在模型大小。前后处理超参
-/// 三档共用，见 `tools/build-ocr-models/`。模型不进 app bundle，
+/// 三档共用，构建源见
+/// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/scripts/build_models.py`。
+/// 模型不进 app bundle，
 /// 用户在设置里选档下载，也可以删掉退回系统引擎。
 enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
     case tiny
@@ -50,8 +52,9 @@ enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// 压缩包字节数，与 `sha256` 一样由 `tools/build-ocr-models` 产出并写进
-    /// manifest.json，换模型必须把两者一起同步过来。
+    /// 压缩包字节数，与 `sha256` 一样由
+    /// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/manifests/v1.json`
+    /// 锁定；换模型必须把两者一起同步过来。
     var downloadBytes: Int64 {
         switch self {
         case .tiny: 2_915_454
@@ -70,7 +73,7 @@ enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
 
     /// Apple Archive 格式。iOS 没有公开的解 zip API，而 AppleArchive
     /// 是系统 Swift 模块，解包不需要引入任何三方库。
-    var archiveName: String { "verto-ocr-\(rawValue)-v\(OCRModelPack.version).aar" }
+    var archiveName: String { "pp-ocr-v6-coreml-\(rawValue)-v\(OCRModelPack.version).aar" }
 
     var archiveURL: URL { OCRModelPack.releaseBaseURL.appendingPathComponent(archiveName) }
 
@@ -101,10 +104,10 @@ enum OCRModelPack {
     /// 版本号进目录名，旧包因此不会被新代码误读，升级时自然作废。
     static let version = "1"
 
-    /// 模型托管在本仓库的 GitHub Release。用 Release 而不是仓库文件：
-    /// 仓库要保持可克隆的体积，而 Release 资产走 CDN 且 URL 稳定。
+    /// 模型工程与产物统一托管在专用仓库；Verto 的 Release 只留给 app 本身。
+    /// 仍使用 GitHub Release 资产，是因为它走 CDN、URL 稳定且不撑大 git 仓库。
     static let releaseBaseURL = URL(
-        string: "https://github.com/YspritanHyzygy/Verto/releases/download/ocr-models-v\(version)/"
+        string: "https://github.com/YspritanHyzygy/PP-OCR-for-Apple/releases/download/v\(version)/"
     )!
 
     static let detectorFileName = "VertoTextDetector.mlpackage"

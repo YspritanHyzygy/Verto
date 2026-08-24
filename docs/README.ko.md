@@ -87,7 +87,7 @@ iOS 26 이상에서는 시스템이 지원할 때 SpeechAnalyzer와 SpeechTransc
 
 카메라 화면에서 사진을 촬영하거나 사진 보관함의 이미지를 선택할 수 있습니다. 텍스트 인식은 기기에서 실행됩니다. 번역문은 인식된 사각형 위에 놓이고 원본 이미지의 각도, 배경색, 글자색을 사용합니다. 번역 블록을 탭하면 원문과 번역문을 비교하고 복사, 읽기, 기록 저장을 할 수 있습니다.
 
-시스템 Vision이 기본 인식 방식입니다. PP-OCRv6 모델 팩을 다운로드하면 Core ML 검출 모델과 인식 모델을 사용합니다. 설정에서는 경량, 균형, 최고 정확도 세 등급을 선택할 수 있으며 다운로드 용량과 인식 점수는 [`OCRModelTier`](../Verto/Camera/OCRModelPack.swift)에서 직접 읽습니다. 한국어는 항상 시스템 텍스트 인식을 사용합니다. 경량 모델에는 일본어 가나가 없으므로 일본어도 시스템 텍스트 인식을 사용합니다.
+시스템 Vision이 기본 인식 방식입니다. PP-OCRv6 모델 팩을 다운로드하면 Core ML 검출 모델과 인식 모델을 사용합니다. 모델 팩은 별도의 [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) 프로젝트에서 빌드하고 배포합니다. 설정에서는 경량, 균형, 최고 정확도 세 등급을 선택할 수 있으며 다운로드 용량과 인식 점수는 [`OCRModelTier`](../Verto/Camera/OCRModelPack.swift)에서 직접 읽습니다. 한국어는 항상 시스템 텍스트 인식을 사용합니다. 경량 모델에는 일본어 가나가 없으므로 일본어도 시스템 텍스트 인식을 사용합니다.
 
 인식된 줄은 열, 간격, 기울기, 글자 크기에 따라 문단으로 묶입니다. 이 판정 규칙은 [`TextDetectionPostProcess`](../Verto/Camera/TextDetectionPostProcess.swift)가 관리합니다. 사진 출력은 뷰파인더에 표시된 방향을 유지합니다. 인식용 사본은 `AVCaptureDevice.RotationCoordinator`의 방향을 따르고, 인식된 사각형은 원본 이미지 좌표로 다시 옮겨집니다.
 
