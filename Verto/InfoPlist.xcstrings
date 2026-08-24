@@ -89,31 +89,31 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conversation translation uses the microphone to record your speech for live speech recognition and translation."
+            "value" : "Conversation translation uses the microphone to recognize and translate your speech in real time."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La traducción de conversaciones usa el micrófono para grabar tu voz y así reconocerla y traducirla en tiempo real."
+            "value" : "La traducción de conversaciones usa el micrófono para reconocer y traducir tu voz en tiempo real."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "会話翻訳では、リアルタイムの音声認識と翻訳のためにマイクで音声を録音します。"
+            "value" : "会話翻訳では、マイクを使って音声をリアルタイムで認識し、翻訳します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "대화 번역은 실시간 음성 인식과 번역을 위해 마이크로 음성을 녹음합니다."
+            "value" : "음성 대화 번역은 마이크를 사용해 음성을 실시간으로 인식하고 번역합니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "对话翻译需要使用麦克风录制你的语音，用于实时语音识别与翻译。"
+            "value" : "对话翻译使用麦克风实时识别并翻译你的语音。"
           }
         }
       }
@@ -124,31 +124,31 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Speech recognition turns your speech into text for translation. On iOS 26 and later, recognition happens on your device."
+            "value" : "Speech recognition turns your speech into text for translation. When supported, recognition happens on your device."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El reconocimiento de voz convierte tu voz en texto para traducirlo. En iOS 26 o posterior, el reconocimiento se realiza en tu dispositivo."
+            "value" : "El reconocimiento de voz convierte tu voz en texto para traducirla. Cuando es compatible, el reconocimiento se realiza en tu dispositivo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "音声認識の権限は、音声をテキストに変換して翻訳するために使用します。iOS 26 以降では認識はデバイス上で行われます。"
+            "value" : "音声認識は音声をテキストに変換して翻訳に使用します。対応している場合、認識はデバイス上で行われます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "음성 인식 권한은 음성을 텍스트로 변환해 번역하는 데 사용됩니다. iOS 26 이상에서는 인식이 기기에서 이루어집니다."
+            "value" : "음성 인식은 음성을 텍스트로 변환해 번역에 사용합니다. 지원되는 경우 기기에서 인식합니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要语音识别权限把你的语音转成文字后翻译；iOS 26 及以上识别在你的设备上完成。"
+            "value" : "语音识别会把你的语音转成文字，用于翻译。支持时，识别在设备上完成。"
           }
         }
       }

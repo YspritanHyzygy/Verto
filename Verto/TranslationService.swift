@@ -24,19 +24,21 @@ enum TranslationEngine: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    func displayName(relayConfigured: Bool) -> String {
         switch self {
-        case .google: String(localized: "谷歌翻译")
+        case .google:
+            relayConfigured ? String(localized: "谷歌翻译") : String(localized: "系统翻译")
         case .custom: String(localized: "自研模型")
         case .llm: String(localized: "LLM 翻译")
         }
     }
 
-    var subtitle: String {
+    func subtitle(relayConfigured: Bool) -> String {
         switch self {
-        case .google: String(localized: "在线翻译 · 神经网络模型")
-        case .custom: String(localized: "端侧离线 · 更快更私密")
-        case .llm: String(localized: "自带 API Key · 更高质量")
+        case .google:
+            relayConfigured ? String(localized: "在线翻译") : String(localized: "设备端离线翻译")
+        case .custom: String(localized: "设备端离线翻译")
+        case .llm: String(localized: "使用你自己的 API Key")
         }
     }
 
@@ -84,14 +86,14 @@ enum TranslationError: LocalizedError, Equatable {
         switch self {
         case .network: String(localized: "网络连接失败，请检查网络后重试")
         case .rateLimited: String(localized: "请求过于频繁，请稍后再试")
-        case .serverError(let code): String(localized: "翻译服务暂时不可用（HTTP \(code)）")
+        case .serverError(let code): String(localized: "翻译服务暂时不可用（HTTP \(code)），请稍后重试")
         case .invalidResponse: String(localized: "无法解析翻译结果，请重试")
         case .textTooLong: String(localized: "文本过长，请缩短后重试")
         // 令牌不对是配置问题，把中转的英文原文摆给用户没有意义，单独给一句话。
         case .rejected("unauthorized", _):
-            String(localized: "翻译服务拒绝了这次请求：这份构建的令牌无效")
+            String(localized: "这份构建的翻译服务令牌无效，请检查中转配置")
         case .rejected(_, let message):
-            String(localized: "翻译服务拒绝了这次请求：\(message)")
+            String(localized: "翻译服务配置有误，请检查中转设置。服务返回：\(message)")
         case .systemTranslationUnavailable(let reason):
             String(localized: "系统翻译不可用：\(reason)")
         }

@@ -1,124 +1,39 @@
 <p align="center">
-  <img src="icon.png" width="128" alt="译境 app icon" />
+  <img src="icon.png" width="128" alt="Verto app icon" />
 </p>
 
-<h1 align="center">译境 (Verto)</h1>
-
-<p align="center">
-  <img alt="AI Coded 100%" src="https://img.shields.io/badge/AI%20Coded-100%25-brightgreen?style=flat-square&labelColor=444" />
-  <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-0A84FF?style=flat-square&labelColor=444&logo=apple&logoColor=white" />
-  <img alt="SwiftUI" src="https://img.shields.io/badge/Swift-SwiftUI-F05138?style=flat-square&labelColor=444&logo=swift&logoColor=white" />
-  <a href="../LICENSE"><img alt="License Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-D6A184?style=flat-square&labelColor=444" /></a>
-</p>
+<h1 align="center">Verto</h1>
 
 <p align="center">
   <a href="../README.md">简体中文</a> · <b>English</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a>
 </p>
 
-<p align="center">A native SwiftUI translation app for iOS — text, voice conversation, and camera —<br />built on a real translation and continuous speech-recognition pipeline, and doubling as a proving ground for a home-grown translation model and LLM translation engines.</p>
+<p align="center">A native SwiftUI translation app for iOS with text translation, bilingual voice conversations, and in-place camera translation.</p>
 
 ---
 
-## Project
-
-- Xcode project: `Verto.xcodeproj`
-- App name: 译境 (Chinese for “realm of translation”); shown as “Verto” in non-Chinese UI languages
-- UI languages: Simplified Chinese, English, Japanese, Korean, Spanish (switchable per app in iOS Settings; Simplified Chinese is the source language, string catalogs at `Verto/Localizable.xcstrings` + `Verto/InfoPlist.xcstrings`)
-- Bundle ID: `com.yspritan.verto`
-- Minimum OS: iOS 17
-- Stack: SwiftUI, native TabView, Observation, AVFoundation, PhotosUI, Speech (SpeechAnalyzer/SFSpeechRecognizer), Translation; on iOS 26+ the system tab bar automatically adopts Liquid Glass.
-- Permissions: voice conversation needs microphone access; the iOS 17–25 fallback path additionally needs speech-recognition access (both usage descriptions are provided via the project's INFOPLIST_KEY_*).
-
-## Features
-
-### Text translation
-
-Tapping the source text expands the real source card from its resting height to the full viewport on a single `.spring(duration: 0.45, bounce: 0.12)`; the software keyboard requests focus on the next runloop and rises in parallel with the expansion. When the tab bar hides or the keyboard safe area changes, the spring retargets with preserved velocity — no waiting for layout to settle, no snapshot overlays, no cross-fade hand-off at the end. Text, dictation, and language changes are first saved as a draft; only tapping the terracotta circular check “Done & Translate” in the top-right commits it and fires a real translation. The result view supports swapping languages, reading the result aloud, copy, favorite, and share.
-
-**Engine & cache**: translation goes through a self-hosted relay (`tools/translate-relay`, deployed on Cloudflare Workers) that fronts Cloud Translation v3. The service-account private key stays on the relay and never ships with the app; the client carries only a shared-secret header. The relay host and token are injected at build time from a gitignored `Secrets.local.xcconfig` — **a build without them falls back to the system Translation framework** (offline, free, iOS 18+, unavailable on the Simulator). Submissions show a loading state; failures show a localized error message with a retry button; a new submission cancels the in-flight request. Successful results are cached in an in-process LRU (200 entries) keyed by engine, language pair, and source text — repeated translations are served synchronously without touching the network; failures are never cached, so a retry always goes out for real. The source language supports auto-detect (omitting `source` in the contract means auto-detect, and the detected language comes back with the translation): the language bar shows the detected language and swapping is enabled only once detection lands. **Cloud Translation v3 returns no alternative renderings, so the “alternatives” entry is now always hidden** (the code already hid it when there were none).
-
-### Voice conversation translation
-
-Tap the microphone to start listening. While you speak, the active bubble shows the volatile transcript plus a low-opacity live rough translation (re-translation throttled at 350 ms, with masked source text and generation numbers dropping stale responses to prevent flicker). A sentence finalizes automatically once the volatile text has been stable ≥0.9 s and RMS silence lasts ≥0.55 s (or tap to end manually; 55 s hard cap).
-
-**Recognition never waits for translation**: finalization is just a cut point on the recognition stream (`finalize(through: nil)`). A finalized sentence lands on screen immediately (rough-translation preview + translating state) while the authoritative translation fills its bubble asynchronously, with in-bubble retry on failure; recognition keeps running for the next sentence with zero words lost at the boundary (track state is split at the consumption baseline). Auto-speak is queued into the gaps when nobody is talking, and audio input is suspended during playback to prevent re-capture.
-
-**Bilingual auto-detection (default)**: the center microphone auto-identifies within the language pair — one recognition track per language fed the same audio in parallel, the winner scored from NLLanguageRecognizer language probability + recognition confidence + text volume (with hysteresis against per-character flip-flops). The detected language decides the bubble side and translation direction, so Chinese and English can be mixed freely; a failing track never interrupts the utterance (the remaining tracks keep going). Tap a language button to lock one side manually, tap again to return to auto; the status area shows the current mode (“Listening · English / 中文”, or a single language).
-
-**Recognition stack**: on iOS 26+ with runtime availability (`SpeechTranscriber.isAvailable` and non-empty supportedLocales) it runs SpeechAnalyzer with multiple attached SpeechTranscriber modules (fully on-device, microphone permission only; degrades to a single track if modules fail); otherwise it falls back to multiple SFSpeechRecognizer instances running in parallel (iOS 17–25 and the Simulator; both permissions).
-
-**Latency essentials**: the recognition chain is session-persistent — the analyzer is built during prepare with `.processLifetime` model residency and a `prepareToAnalyze` warm-up; sentences are cut with `finalize(through: nil)` instead of tear-down/rebuild (a rebuild costs a seconds-long model load per sentence); half-duplex across TTS playback and inter-sentence gaps is maintained by the suspended audio source dropping buffers (no per-sentence audio-session setActive cycling); `.fastResults` accelerates the first volatile; finalization thresholds are 0.9 s stable volatile + 0.55 s silence; winner selection may switch freely without hysteresis within the first 0.7 s of speech.
-
-**Translation routing**: Apple's Translation framework comes first — on iOS 26+ it constructs `Translation.TranslationSession(installedSource:target:)` directly (on 26.4+ a separate `.lowLatency` session handles partials); on iOS 18–25 sessions are borrowed through a resident host view at AppShell's root. On the Simulator / iOS 17 / missing language packs / framework errors it automatically falls back to the same translation service the text and camera tabs use, and remembers the decision per language pair (reasons logged via os.Logger).
-
-Incoming calls, backgrounding, and tab switches all stop capture; the conversation persists across tabs (the controller is owned by AppShell). Bubbles carry speak buttons; the page header has a quick playback-mode menu (synced with Settings); the pair's “auto-detect” resolves to a concrete language on the voice tab based on the opposite side. Final translations are cached in-process (finals only — partials never enter the LRU); a failed final can be retried inside its bubble. The waveform is driven by measured microphone level (vDSP RMS).
-
-### Camera translation
-
-Aim at the text and press the shutter (or pick from the library). Vision runs on-device OCR over the whole frame and **the translation is laid back over the original, in place** — positioned from the recognized quadrilateral, rotated to the original's tilt, with background and text colors sampled from the photo: the sampled background covers the original glyphs, and the translation is written on top at a size derived from the line height, shrinking to fit the original box.
-**Two recognition engines.** The system's Vision (`VNRecognizeTextRequest` revision 3) is the default; once a high-accuracy model pack is installed, PP-OCRv6 takes over (converted to Core ML — two stages: DB detects a rotated box per text line, CTC reads each line). The packs are not part of the IPA: the first visit to the camera screen fetches one in the background, the system engine keeps working meanwhile, and the switch happens on its own once the download lands. Settings lets you switch between three tiers or delete them and fall back to the system engine:
-
-| Tier | Download | Accuracy | Scripts |
-|---|---|---|---|
-| Lightweight | 2.8 MB | 73.5 | Chinese, Latin (no Japanese kana) |
-| Balanced (default) | 12.4 MB | 81.3 | Chinese, Japanese, Latin, Greek |
-| Highest accuracy | 45.3 MB | 83.2 | same as Balanced |
-
-Accuracy is the weighted average over PaddleOCR's official 16-category real-photo benchmark; on the same benchmark PP-OCRv5_mobile scores 73.7, Gemini-3.1-Pro 71.4 and GPT-5.5 64.2. Measured recognition time on a Mac is 10 / 33 / 58 ms respectively (18-line menu, detection included) — the difference is imperceptible, so the real trade-off is download size.
-
-**None of the three PP-OCRv6 tiers carry Hangul in their character set**, so Korean is always handed back to the system engine; the lightweight tier is also missing Japanese kana, so Japanese falls back there too. That routing lives in `RoutingTextRecognitionService`, which also falls back when the model fails to load or throws — high-accuracy recognition is an enhancement, never a prerequisite, and the camera screen stays usable without it.
-
-
-Recognized lines are merged into paragraphs by position before translation (translating line by line chops sentences apart): same column, line gap within one and a half lines, similar tilt, and **comparable type size** are all required — a heading sits only one line gap above the body text, so gap alone would merge them; the size ratio is the real discriminator. Side-by-side menu columns never merge because their horizontal projections do not overlap. **The test is not only against the previous line: a new line must also be compatible with the block's first line** — comparing only against the previous line lets a block drift down a staircase of individually-passing steps until its head and tail are unrelated, and since the union takes the outermost corners, one bad link swallows everything in between into a single box. Both recognizers feed grouping the same kind of tight box: PP-OCRv6's detection boxes are expanded by `unclip_ratio`, and the expansion depends on the aspect ratio, so using expanded boxes as the criterion makes the thresholds drift with each line's shape — the expanded box is used only to crop the recognizer's input.
-
-**The photo you get is the one you framed.** The app is locked to portrait, and both the viewfinder and the photo output follow the interface rather than gravity — hold the phone sideways or upside down and you get a sideways or upside-down photo, matching exactly what was on screen when you pressed the shutter. The app does not silently “straighten” it for you. The tilt is handled inside the copy that goes to recognition: that copy is rotated upright using the gravity reading from `AVCaptureDevice.RotationCoordinator` (without it, the detector takes a vertical line's short edge for its top edge and the cropped line is resampled into mush — one or two characters per block), and the resulting quads are rotated back into the original photo's coordinates by the same number of quarter turns. Display and colour sampling always read the untouched photo, so there is still only one coordinate system end to end.
-
-Translation submits the whole page at once after de-duplicating source text (the service splits it into batches by segment count and code points). **Recognition never waits for translation** — blocks appear with their source text first, and each batch fills in as it lands; a failed block retries on its own without dragging down the page. Repeated short phrases in one photo are sent once, and results are reused across passes through an in-process LRU cache. On failure the block shows the actual reason (invalid token / quota exhausted / no network / missing language pack are all different things), not an anonymous red triangle.
-
-Tap any block to compare original and translation, then copy, speak it (in the target language's voice), or save it to history (sharing the same dedupe-and-insert path as the text tab). The flash button drives `AVCapturePhotoSettings.flashMode` and the exposure button `AVCaptureDevice.exposureMode`; the flash button is dimmed on devices without one. Changing the language pair re-translates the same photo instead of asking for a retake.
-
-Camera permission is requested lazily when the screen appears; if denied, the screen explains and offers “Open Settings”. When no camera is available (the Simulator included) no fake viewfinder is drawn — the screen points at the photo library and dims the shutter. Switching tabs or backgrounding the app stops the capture session.
-
-### Languages, history & favorites
-
-- Language picker: source/target switching, search by name/alias/code, selection and empty-result states.
-- History & favorites: shared translation records, favorites filter, instant star toggle, tapping a record refills the text tab.
-
-### Settings & appearance
-
-The settings sheet opens from the text tab's top-right corner. The translation model is switchable — Google Translate is available today, while the home-grown model and LLM translation (bring your own API key) appear as disabled “coming soon” placeholders. The “voice conversation” section selects spoken-translation behavior (text only / auto-speak after translation / speak only with headphones — wired, Bluetooth, and USB, with live route detection); general preferences include “auto-speak translations” (text tab only). Engine, playback mode, preferences, and the last language pair persist via UserDefaults; the first launch keeps the demo content, and afterwards the app starts blank with the remembered pair.
-
-**Dark mode**: follow the system or pick an appearance manually in Settings; the adaptive palette runs through every screen and component.
-
-### Navigation & motion
-
-- Text, voice, and camera are the three top-level areas of a native TabView; the tab bar stays visible in normal use and each tab keeps its state — it is only temporarily hidden by the system while the text tab is in focused typing, returning after the draft is committed. iOS 26+ renders Liquid Glass through the system, iOS 17–25 uses the corresponding system tab-bar appearance; a real selection change triggers system haptic feedback.
-- Focused typing places no “Done” item in the `.keyboard` toolbar; both software and hardware keyboards use the submit button pinned to the page's top-right, keeping bottom actions clear of the system tab bar.
-- The typing transition has a single source of truth: whether a draft exists. The source editor keeps one identity throughout; expansion and collapse are both layout animations on the real card (the render tree interpolates every view's frame per frame, and the card face Shape recomputes its path each frame so the 22 pt continuous corner radius never distorts) — no geometry measurement, no cross-transaction validation, no phase choreography. The transition is interactive and interruptible end to end; tapping the check mid-expansion reverses smoothly with the current velocity. The result area fades out/in beneath the paper over a ~0.16 s opacity transition, its position carried by the layout spring; the check pops from 0.84× back to full size after a ~40 ms delay.
-- With “Reduce Motion” on, layout switches straight to its end state (no size, position, or scale animation); the result area and header buttons keep only a ~0.12 s opacity fade; keyboard and tab bar continue to use system behavior.
-
-## Status & roadmap
-
-Text translation goes through a self-hosted relay backed by Cloud Translation v3 (deployment guide in `tools/translate-relay/README.md`; builds without a relay fall back to the system's offline translation); voice conversation is a real recognition + translation pipeline (see above); camera translation is a real on-device Vision OCR + translation pipeline (see above). The home-grown model and LLM-based translation engines are planned and appear as placeholders in Settings — the seam for a future streaming speech-translation engine is already left at the bottom of `Verto/Voice/AppleTranslationService.swift` (a `StreamingSpeechTranslating` protocol stub, attached at the voice-session layer rather than text→text).
-
-## Run in Xcode
+## Quick start
 
 1. Open `Verto.xcodeproj` in Xcode.
 2. Select the `Verto` scheme.
-3. Pick any iPhone Simulator running iOS 17 or newer.
-4. Hit Run.
+3. Choose an iPhone Simulator running iOS 17 or later.
+4. Press Run.
 
-**It builds and runs as-is** — nothing has to be configured first. That build simply has no relay, so translation falls back to the system Translation framework (real device, iOS 18+; Apple does not support it on the Simulator, where you get “system translation is unavailable”).
+The project builds without extra configuration. A build with no online relay uses the system Translation framework, which requires a real device running iOS 18 or later. System translation is unavailable in the Simulator.
 
-For online translation, deploy your own relay following [`tools/translate-relay/README.md`](../tools/translate-relay/README.md), then:
+### Online translation
+
+Online translation uses the Cloudflare Worker in `tools/translate-relay` to connect to Cloud Translation v3. Deploy the relay with [`tools/translate-relay/README.md`](../tools/translate-relay/README.md), then create the local configuration:
 
 ```bash
 cp Secrets.local.xcconfig.example Secrets.local.xcconfig
 ```
 
-Fill in the host and shared secret. `Secrets.local.xcconfig` is gitignored — **never put real values in `Secrets.xcconfig`**, which is committed. Once configured, the relay works on the Simulator too (it is plain HTTPS).
+Add the host and shared secret to `Secrets.local.xcconfig`. Git ignores this file. Keep the committed `Secrets.xcconfig` free of real credentials.
 
-If your terminal's `xcode-select` points at the Command Line Tools or an older Xcode, prefix command-line builds with `DEVELOPER_DIR`:
+### Command-line build
+
+If `xcode-select` points to the Command Line Tools or an older Xcode, select Xcode explicitly:
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -128,43 +43,92 @@ xcodebuild \
   -configuration Debug \
   -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath /private/tmp/VertoDerivedData \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
 
+## Project
+
+- Xcode project: `Verto.xcodeproj`
+- App name: 译境 in Simplified Chinese and Verto in the other interface languages
+- Interface languages: Simplified Chinese, English, Japanese, Korean, and Spanish
+- String catalogs: `Verto/Localizable.xcstrings` and `Verto/InfoPlist.xcstrings`
+- Bundle ID: `com.yspritan.verto`
+- Minimum system: iOS 17
+- Main frameworks: SwiftUI, Observation, AVFoundation, PhotosUI, Speech, and Translation
+- Permissions: camera translation uses the camera, voice conversations use the microphone, and the SFSpeechRecognizer path also requests speech-recognition access
+
+The interface uses native `TabView`, `Form`, `Picker`, `Menu`, and accessibility semantics. `AppTheme` and each screen own the colors, spacing, and outer layout. On iOS 26 and later, the system renders Liquid Glass. Earlier systems use the matching native control appearance.
+
+## Features and implementation
+
+### Text translation
+
+Tap the source card to edit it. The card itself expands and collapses while the editor keeps one identity throughout. Text, dictation, and language changes enter a draft first. Tap `Done and translate` to submit it. The result screen supports language swapping, speech, copy, favorites, and sharing.
+
+A configured build uses Cloud Translation v3 through the relay. A build without a relay uses system translation. A new submission cancels the active request, and successful results are cached in process by service, language pair, and source text. The source language supports automatic detection. Language swapping becomes available after detection. Cloud Translation v3 provides no alternative translations, so the alternative action appears only when a service returns alternatives.
+
+### Voice conversation
+
+The voice screen continuously shows the active transcript and a live translation preview. Sentence-boundary settings live in [`VoiceTiming`](../Verto/Voice/VoiceTranscription.swift). The recognition stream continues with the next sentence after submission, while final translations fill their bubbles asynchronously. Speech playback is queued into gaps in the conversation, and microphone input pauses during playback.
+
+Bilingual automatic detection creates one recognition track for each language in the pair, then selects the active language from language probability, recognition confidence, and text volume. Users can also lock either language manually. Incoming calls, backgrounding, and tab changes stop capture. The conversation remains in the current app session.
+
+On iOS 26 and later, Verto uses SpeechAnalyzer and SpeechTranscriber when the system supports them. Other environments use SFSpeechRecognizer. Translation prefers an Apple Translation session and switches to the same translation service as the text and camera screens when that system capability is unavailable.
+
+### Camera translation
+
+The camera screen can take a photo or load one from the photo library. Text recognition runs on device. Each translation is placed over the recognized quadrilateral and follows the source image's angle, background color, and text color. Tap a translated block to compare the source and translation, then copy it, speak it, or save it to history.
+
+System Vision provides the baseline recognizer. After a PP-OCRv6 pack is downloaded, the camera uses the Core ML detection and recognition models. Settings offers Lightweight, Balanced, and Highest accuracy tiers, with download size and recognition score read directly from [`OCRModelTier`](../Verto/Camera/OCRModelPack.swift). Korean always uses system text recognition. The Lightweight pack contains no Japanese kana, so Japanese also uses system text recognition with that tier.
+
+Recognized lines are grouped into paragraphs by column, spacing, angle, and type size. [`TextDetectionPostProcess`](../Verto/Camera/TextDetectionPostProcess.swift) owns those rules. Photo output keeps the direction shown in the viewfinder. The recognition copy follows `AVCaptureDevice.RotationCoordinator`, and recognized quadrilaterals are mapped back into the original image coordinates.
+
+The page is deduplicated and translated in batches. Recognition results appear first, then translations update each block as their batches arrive. A failed block can retry on its own. Changing the language pair translates the same photo again.
+
+Camera access is requested when the screen opens. A denied permission shows an explanation and an entry point to system Settings. When no camera is available, the screen directs the user to the photo library.
+
+### Languages, history, and settings
+
+The language picker switches source and target languages and searches by name, alias, or language code. History and favorites share one translation store. Tapping a history item refills the text screen.
+
+Settings shows the effective translation service for the current build. It also controls voice playback, automatic speech on the text screen, OCR models, and appearance. The in-house model and LLM translation are disabled roadmap items. Preferences and the most recent language pair are stored in UserDefaults.
+
+### Navigation and motion
+
+Text, voice, and camera are the three top-level areas of a native `TabView`, and each tab keeps its state. The system temporarily hides the tab bar during focused text entry. With Reduce Motion enabled, layout moves directly to its final state while the necessary opacity changes remain.
+
+Text-card motion runs on the actual card. [`TextEntryMotionProfile`](../Verto/Screens/TextTranslateView.swift) owns the motion parameters. Automated tests verify interaction and final states, while screen recordings confirm that the animation is visibly clear.
+
 ## Simulator limitations
 
-**Apple platform constraints, verified empirically**: neither SpeechTranscriber nor the Translation framework works on the iOS Simulator (no ANE, no translation models). The voice tab automatically drops to the SFSpeechRecognizer + Google fallback chain there, and as measured on the iOS 27 Simulator: **en-US cannot initialize because the system forces the local recognizer (kLSRErrorDomain 300 in both on-device and server modes), while zh-CN works fully via server-side recognition** — so speaking Chinese on the Simulator exercises the real “recognize → translate → speak” loop, while English is silently skipped by multi-track auto-detection (an English-only single track shows the notice “The simulator can't recognize this language. Test on a real device.”).
+- The iOS Simulator cannot run SpeechTranscriber or the system Translation framework.
+- The Simulator has no camera, so viewfinder, capture, flash, and device-orientation behavior require an iPhone.
+- Vision and Core ML text recognition can run in the Simulator after an image is selected from the photo library.
+- System offline translation, language-model downloads, dual-track speech recognition, headphone routing, and physical haptics require a real device.
 
-The Simulator also has **no camera**: the viewfinder and shutter can only be verified on real hardware, and on the Simulator the camera screen shows “This device has no camera available” and promotes the photo-library entry point. **Vision text recognition does work on the Simulator** (measured: revision 3, 33 languages, all seven of `Language.all` supported), so picking a photo → OCR → translation → overlay works end to end there; re-run the diagnostic anytime via `VertoTests/VisionAvailabilityProbeTests` (report written to /private/tmp/vision-availability-probe.txt).
-
-Diagnostics can be re-run anytime via `VertoTests/SpeechAvailabilityProbeTests` (report written to /private/tmp/speech-availability-probe.txt). The SpeechAnalyzer path, system offline translation, language-model downloads, the `.lowLatency` strategy, dual-track behavior on device, and headphone detection can only be verified on real hardware. UI tests inject scripted recognition, silent TTS, and synthetic capture via `--uitest-canned-speech` and `--uitest-canned-camera`, never touching real audio or the camera.
+`VertoTests/SpeechAvailabilityProbeTests`, `VertoTests/VisionAvailabilityProbeTests`, and `VertoTests/PaddleOCRProbeTests` inspect the available system capabilities. The probes report the current environment, and their results stay with the test artifacts.
 
 ## Automated tests
 
-The project ships a `VertoUITests` UI-test target whose acceptance flows cover text translation and favoriting, language search and selection, the full voice flow (idle → listening → finalized bubble → pause), voice playback-mode selection in Settings, the full camera flow (shutter → in-place translation overlay → tap for the comparison → save to history), native-TabView cross-tab switching / selection sync / state retention, “draft → Done & Translate → restored result view”, and the DEBUG “Reduce Motion” end-state regression.
+`VertoUITests` covers text translation, favorites, language search, voice conversations, playback settings, camera overlays, history, and tab state. `--uitest-canned-translation`, `--uitest-canned-speech`, `--uitest-canned-camera`, and `--uitest-reset-settings` provide repeatable test data. These injected services keep the real network, microphone, TTS, and camera outside the UI suite.
 
-UI tests uniformly launch with `--uitest-canned-translation`, `--uitest-canned-speech`, `--uitest-canned-camera`, and `--uitest-reset-settings`: the first three inject fixed demo translations, scripted speech recognition, and synthetic capture + recognition (no real network, microphone, TTS, or camera), the last resets persisted preferences so assertions stay stable. The synthetic sign's rendering and its “recognized” text blocks share one set of line data, so the overlay lands exactly where the glyphs were drawn.
+`LocalizationTests` checks all five language resources, format placeholders, and plural rules. Unit tests also cover translation routing, caching, the voice state machine, OCR geometry, and model-file verification.
 
-The UI is localized, and tests run pinned to Simplified Chinese: the shared scheme's Test action sets `zh-Hans` (covering the unit tests hosted in the app), and the UI tests additionally pass `-AppleLanguages` explicitly, so the Chinese copy assertions don't depend on the simulator language; `LocalizationTests` plus an English-UI smoke test cover resource completeness and real loading per language.
-
-Unit tests cover the conversation controller's state machine (throttling, generation-stale drops, endpoint timing, the TTS gating matrix, failure retry, cache hits, and more), the translation-routing fallback chain, playback-mode persistence, and locale mapping. Automated tests for the text-entry transition verify entering edit mode, exiting it, and the stable final state only; visibility, jumps, and ghosting are accepted by reviewing a real iPhone Simulator screen recording.
-
-Run on any installed iPhone Simulator, for example:
+List available simulators with `xcrun simctl list devices available`, then run:
 
 ```bash
 xcodebuild test \
   -project Verto.xcodeproj \
   -scheme Verto \
   -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath /private/tmp/VertoTestData \
-  CODE_SIGNING_ALLOWED=NO \
-  -only-testing:VertoUITests
+  -destination 'platform=iOS Simulator,name=<device name>' \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
-The Simulator can verify that selection actually changes, but not physical haptics; haptic strength and feel need a final check on a real iPhone.
+## Roadmap
+
+The in-house on-device translation model and bring-your-own-key LLM translation remain planned work and appear as disabled choices in Settings. The protocol entry point for streaming speech translation is [`StreamingSpeechTranslating`](../Verto/Voice/AppleTranslationService.swift). The current voice session uses speech recognition, text translation, and speech playback.
 
 ## License
 

@@ -189,7 +189,7 @@ struct TextTranslateView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("完成并翻译")
-                    .accessibilityHint("提交当前文字并返回翻译结果")
+                    .accessibilityHint("提交文字并显示译文")
                     .accessibilityIdentifier("finish-source-editing-button")
                     .transition(motionProfile.finishButtonTransition)
                 } else {
@@ -255,7 +255,7 @@ struct TextTranslateView: View {
                     .focused($sourceIsFocused)
                     .allowsHitTesting(isEditingSource)
                     .accessibilityLabel("原文")
-                    .accessibilityHint("输入完成后，点按右上角对勾翻译")
+                    .accessibilityHint("输入完成后，轻点完成并翻译")
                     .accessibilityIdentifier("source-text-editor")
                     .accessibilityHidden(!isEditingSource)
 
@@ -268,7 +268,7 @@ struct TextTranslateView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("原文")
                     .accessibilityValue(activeSourceText)
-                    .accessibilityHint("点按以编辑原文")
+                    .accessibilityHint("轻点编辑原文")
                     .accessibilityIdentifier("source-text-editor")
                 }
             }

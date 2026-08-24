@@ -27,6 +27,12 @@ final class LocalizationTests: XCTestCase {
     /// 插值格式串、动态查表的分节标题、语言注解名。
     private static let representativeKeys = [
         "翻译",
+        "翻译服务",
+        "系统翻译",
+        "源语言",
+        "目标语言",
+        "文字识别",
+        "默认",
         "设置",
         "选择语言",
         "历史记录",
@@ -40,6 +46,16 @@ final class LocalizationTests: XCTestCase {
         "全部语言",
         "正在识别文字…",
         "未获得相机权限，请在系统设置中开启",
+        "此设备无法识别这种语言，请选择其他语言",
+        "翻译服务暂时不可用（HTTP %lld），请稍后重试",
+        "这份构建的翻译服务令牌无效，请检查中转配置",
+        "%@ · 版本 %@",
+    ]
+
+    private static let permissionKeys = [
+        "NSCameraUsageDescription",
+        "NSMicrophoneUsageDescription",
+        "NSSpeechRecognitionUsageDescription",
     ]
 
     private func bundle(for language: String) throws -> Bundle {
@@ -57,6 +73,18 @@ final class LocalizationTests: XCTestCase {
                 let value = bundle.localizedString(forKey: key, value: "__MISSING__", table: nil)
                 XCTAssertNotEqual(value, "__MISSING__", "\(language) 缺少 key：\(key)")
                 XCTAssertFalse(value.isEmpty, "\(language) 的 \(key) 译文为空")
+            }
+        }
+    }
+
+    func testAllLanguageBundlesResolvePermissionDescriptions() throws {
+        for language in Self.languages {
+            let bundle = try bundle(for: language)
+            for key in Self.permissionKeys {
+                let value = bundle.localizedString(forKey: key, value: "__MISSING__", table: "InfoPlist")
+                XCTAssertNotEqual(value, "__MISSING__", "\(language) 缺少 InfoPlist key：\(key)")
+                XCTAssertFalse(value.isEmpty, "\(language) 的 \(key) 文案为空")
+                XCTAssertFalse(value.contains("iOS 26"), "\(language) 的权限文案写死了系统版本：\(value)")
             }
         }
     }

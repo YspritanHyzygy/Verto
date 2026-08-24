@@ -163,7 +163,26 @@ final class TranslationRelayServiceTests: XCTestCase {
         // 令牌不对是配置问题，摆英文原文给用户没有意义。
         XCTAssertEqual(
             error.errorDescription,
-            String(localized: "翻译服务拒绝了这次请求：这份构建的令牌无效")
+            String(localized: "这份构建的翻译服务令牌无效，请检查中转配置")
+        )
+    }
+
+    func testTranslationEngineLabelReflectsEffectiveService() {
+        XCTAssertEqual(
+            TranslationEngine.google.displayName(relayConfigured: true),
+            String(localized: "谷歌翻译")
+        )
+        XCTAssertEqual(
+            TranslationEngine.google.subtitle(relayConfigured: true),
+            String(localized: "在线翻译")
+        )
+        XCTAssertEqual(
+            TranslationEngine.google.displayName(relayConfigured: false),
+            String(localized: "系统翻译")
+        )
+        XCTAssertEqual(
+            TranslationEngine.google.subtitle(relayConfigured: false),
+            String(localized: "设备端离线翻译")
         )
     }
 

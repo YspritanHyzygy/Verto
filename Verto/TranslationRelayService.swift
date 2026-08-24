@@ -223,7 +223,7 @@ struct TranslationRelayService: TranslationService {
         case 400..<500:
             return .rejected(
                 code: detail?.error.code ?? "rejected",
-                message: detail?.error.message ?? String(localized: "中转没有说明原因")
+                message: detail?.error.message ?? String(localized: "中转未返回错误详情")
             )
         default:
             return .serverError(status)

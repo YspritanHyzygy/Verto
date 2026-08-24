@@ -1,9 +1,6 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "" : {
-
-    },
     "“%@” 的自然译文" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -180,10 +177,35 @@
       }
     },
     "%@, %@" : {
+      "extractionState" : "manual",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@, %2$@"
           }
         }
@@ -528,37 +550,37 @@
         }
       }
     },
-    "中转没有说明原因" : {
+    "中转未返回错误详情" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The relay gave no reason."
+            "value" : "The relay returned no error details."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El repetidor no indicó ningún motivo."
+            "value" : "El relay no devolvió detalles del error."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "中継サーバーは理由を示しませんでした。"
+            "value" : "中継サーバーからエラーの詳細が返されませんでした。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "중계 서버가 이유를 알려주지 않았습니다."
+            "value" : "중계 서버가 오류 세부 정보를 반환하지 않았습니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "中转没有说明原因"
+            "value" : "中转未返回错误详情"
           }
         }
       }
@@ -1403,37 +1425,37 @@
         }
       }
     },
-    "在线翻译 · 神经网络模型" : {
+    "在线翻译" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Online · Neural machine translation"
+            "value" : "Online translation"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "En línea · Traducción automática neuronal"
+            "value" : "Traducción en línea"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オンライン · ニューラル機械翻訳"
+            "value" : "オンライン翻訳"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "온라인 · 신경망 기계 번역"
+            "value" : "온라인 번역"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在线翻译 · 神经网络模型"
+            "value" : "在线翻译"
           }
         }
       }
@@ -1689,7 +1711,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Done & Translate"
+            "value" : "Done and translate"
           }
         },
         "es" : {
@@ -2033,37 +2055,37 @@
         }
       }
     },
-    "已翻译 · 轻点任意文字查看原文" : {
+    "翻译完成 · 轻点译文查看原文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translated · Tap any text to see the original"
+            "value" : "Translation complete · Tap a translation to see the original"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Traducido · Toca cualquier texto para ver el original"
+            "value" : "Traducción completada · Toca una traducción para ver el original"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳完了・文字をタップすると原文を表示"
+            "value" : "翻訳完了 · 訳文をタップすると原文を確認できます"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 완료 · 텍스트를 누르면 원문 표시"
+            "value" : "번역 완료 · 번역문을 탭하면 원문을 볼 수 있습니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已翻译 · 轻点任意文字查看原文"
+            "value" : "翻译完成 · 轻点译文查看原文"
           }
         }
       }
@@ -2243,37 +2265,37 @@
         }
       }
     },
-    "当前设备暂不支持识别这种语言" : {
+    "此设备无法识别这种语言，请选择其他语言" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This device can't recognize this language yet."
+            "value" : "This device can't recognize this language. Choose another language."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este dispositivo aún no puede reconocer este idioma."
+            "value" : "Este dispositivo no puede reconocer este idioma. Elige otro idioma."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このデバイスは現在この言語の認識に対応していません。"
+            "value" : "このデバイスではこの言語を認識できません。別の言語を選んでください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 기기에서는 아직 이 언어를 인식할 수 없습니다."
+            "value" : "이 기기에서는 이 언어를 인식할 수 없습니다. 다른 언어를 선택하세요."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前设备暂不支持识别这种语言"
+            "value" : "此设备无法识别这种语言，请选择其他语言"
           }
         }
       }
@@ -2383,77 +2405,77 @@
         }
       }
     },
-    "拍照识别引擎" : {
+    "文字识别" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Photo recognition engine"
+            "value" : "Text recognition"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Motor de reconocimiento de fotos"
+            "value" : "Reconocimiento de texto"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "写真認識エンジン"
+            "value" : "文字認識"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "사진 인식 엔진"
+            "value" : "텍스트 인식"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "拍照识别引擎"
+            "value" : "文字识别"
           }
         }
       }
     },
-    "推荐" : {
+    "默认" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recommended"
+            "value" : "Default"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recomendado"
+            "value" : "Predeterminado"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "おすすめ"
+            "value" : "デフォルト"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "추천"
+            "value" : "기본"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "推荐"
+            "value" : "默认"
           }
         }
       }
     },
-    "提交当前文字并返回翻译结果" : {
+    "提交文字并显示译文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -2477,13 +2499,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "입력한 텍스트를 제출하고 번역을 표시합니다"
+            "value" : "입력한 텍스트를 제출하고 번역문을 표시합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交当前文字并返回翻译结果"
+            "value" : "提交文字并显示译文"
           }
         }
       }
@@ -2908,37 +2930,37 @@
         }
       }
     },
-    "未下载时使用系统识别引擎。韩语始终由系统引擎识别。" : {
+    "未安装模型时使用系统文字识别。韩语始终使用系统文字识别。" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The system engine is used when no model is downloaded. Korean is always recognized by the system engine."
+            "value" : "System text recognition is used when no model is installed. Korean always uses system text recognition."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se usa el motor del sistema cuando no hay ningún modelo descargado. El coreano siempre se reconoce con el motor del sistema."
+            "value" : "El reconocimiento de texto del sistema se usa cuando no hay ningún modelo instalado. El coreano siempre usa el reconocimiento del sistema."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "モデル未ダウンロード時はシステムのエンジンを使います。韓国語は常にシステムのエンジンで認識します。"
+            "value" : "モデルがインストールされていない場合は、システムの文字認識を使用します。韓国語は常にシステムの文字認識を使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "모델을 내려받지 않았을 때는 시스템 엔진을 사용합니다. 한국어는 항상 시스템 엔진으로 인식합니다."
+            "value" : "설치된 모델이 없으면 시스템 텍스트 인식을 사용합니다. 한국어는 항상 시스템 텍스트 인식을 사용합니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未下载时使用系统识别引擎。韩语始终由系统引擎识别。"
+            "value" : "未安装模型时使用系统文字识别。韩语始终使用系统文字识别。"
           }
         }
       }
@@ -4028,7 +4050,7 @@
         }
       }
     },
-    "点按以编辑原文" : {
+    "轻点编辑原文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -4046,19 +4068,19 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タップして原文を編集"
+            "value" : "タップして原文を編集します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "탭하여 원문 편집"
+            "value" : "탭하여 원문을 편집합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "点按以编辑原文"
+            "value" : "轻点编辑原文"
           }
         }
       }
@@ -4168,37 +4190,37 @@
         }
       }
     },
-    "端侧离线 · 更快更私密" : {
+    "设备端离线翻译" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "On-device & offline · Faster and more private"
+            "value" : "On-device · Offline"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin conexión en el dispositivo · Más rápido y privado"
+            "value" : "En el dispositivo · Sin conexión"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "端末内オフライン · より速くプライベート"
+            "value" : "デバイス内 · オフライン"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "온디바이스 오프라인 · 더 빠르고 프라이빗"
+            "value" : "기기 내 오프라인"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "端侧离线 · 更快更私密"
+            "value" : "设备端离线翻译"
           }
         }
       }
@@ -4238,37 +4260,72 @@
         }
       }
     },
-    "精度越高模型越大，识别耗时差异在几十毫秒内，基本感觉不到。" : {
+    "精度越高，模型下载体积越大。" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Higher accuracy means a larger model. The difference in recognition time is a few tens of milliseconds and is barely noticeable."
+            "value" : "Higher accuracy requires a larger model download."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mayor precisión implica un modelo más grande. La diferencia de tiempo de reconocimiento es de unas decenas de milisegundos y apenas se nota."
+            "value" : "Los modelos más precisos requieren una descarga mayor."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "精度が高いほどモデルは大きくなります。認識時間の差は数十ミリ秒で、ほとんど体感できません。"
+            "value" : "精度が高いモデルほど、ダウンロード容量が大きくなります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "정확도가 높을수록 모델이 커집니다. 인식 시간 차이는 수십 밀리초로 거의 느껴지지 않습니다."
+            "value" : "정확도가 높은 모델일수록 다운로드 용량이 큽니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "精度越高模型越大，识别耗时差异在几十毫秒内，基本感觉不到。"
+            "value" : "精度越高，模型下载体积越大。"
+          }
+        }
+      }
+    },
+    "系统翻译" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System Translation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traducción del sistema"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム翻訳"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 번역"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统翻译"
           }
         }
       }
@@ -4483,25 +4540,25 @@
         }
       }
     },
-    "翻译到" : {
+    "目标语言" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translate to"
+            "value" : "Target language"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Traducir a"
+            "value" : "Idioma de destino"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳先"
+            "value" : "翻訳先言語"
           }
         },
         "ko" : {
@@ -4513,7 +4570,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译到"
+            "value" : "目标语言"
           }
         }
       }
@@ -4658,165 +4715,165 @@
         }
       }
     },
-    "翻译服务拒绝了这次请求：%@" : {
+    "翻译服务配置有误，请检查中转设置。服务返回：%@" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The translation service rejected this request: %@"
+            "value" : "The translation service is misconfigured. Check the relay settings. Service response: %@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El servicio de traducción rechazó esta solicitud: %@"
+            "value" : "El servicio de traducción está mal configurado. Revisa los ajustes del relay. Respuesta del servicio: %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳サービスがこのリクエストを拒否しました：%@"
+            "value" : "翻訳サービスの設定に問題があります。中継サーバーの設定を確認してください。サービスからの応答：%@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 서비스가 이 요청을 거부했습니다: %@"
+            "value" : "번역 서비스 설정에 문제가 있습니다. 중계 설정을 확인하세요. 서비스 응답: %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译服务拒绝了这次请求：%@"
+            "value" : "翻译服务配置有误，请检查中转设置。服务返回：%@"
           }
         }
       }
     },
-    "翻译服务拒绝了这次请求：这份构建的令牌无效" : {
+    "这份构建的翻译服务令牌无效，请检查中转配置" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The translation service rejected this request: this build's token is not valid."
+            "value" : "This build's translation service token is invalid. Check the relay configuration."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El servicio de traducción rechazó esta solicitud: el token de esta compilación no es válido."
+            "value" : "El token del servicio de traducción de esta compilación no es válido. Revisa la configuración del relay."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳サービスがこのリクエストを拒否しました：このビルドのトークンは無効です。"
+            "value" : "このビルドの翻訳サービストークンが無効です。中継サーバーの設定を確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 서비스가 이 요청을 거부했습니다: 이 빌드의 토큰이 유효하지 않습니다."
+            "value" : "이 빌드의 번역 서비스 토큰이 유효하지 않습니다. 중계 설정을 확인하세요."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译服务拒绝了这次请求：这份构建的令牌无效"
+            "value" : "这份构建的翻译服务令牌无效，请检查中转配置"
           }
         }
       }
     },
-    "翻译服务暂时不可用（HTTP %lld）" : {
+    "翻译服务暂时不可用（HTTP %lld），请稍后重试" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translation service is temporarily unavailable (HTTP %lld)."
+            "value" : "Translation service is temporarily unavailable (HTTP %lld). Try again later."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El servicio de traducción no está disponible temporalmente (HTTP %lld)."
+            "value" : "El servicio de traducción no está disponible temporalmente (HTTP %lld). Inténtalo de nuevo más tarde."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳サービスは一時的に利用できません（HTTP %lld）。"
+            "value" : "翻訳サービスは一時的に利用できません（HTTP %lld）。しばらくしてからもう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 서비스를 일시적으로 사용할 수 없습니다(HTTP %lld)."
+            "value" : "번역 서비스를 일시적으로 사용할 수 없습니다(HTTP %lld). 잠시 후 다시 시도하세요."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译服务暂时不可用（HTTP %lld）"
+            "value" : "翻译服务暂时不可用（HTTP %lld），请稍后重试"
           }
         }
       }
     },
-    "翻译模型" : {
+    "翻译服务" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translation model"
+            "value" : "Translation service"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modelo de traducción"
+            "value" : "Servicio de traducción"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳モデル"
+            "value" : "翻訳サービス"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 모델"
+            "value" : "번역 서비스"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译模型"
+            "value" : "翻译服务"
           }
         }
       }
     },
-    "翻译自" : {
+    "源语言" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translate from"
+            "value" : "Source language"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Traducir de"
+            "value" : "Idioma de origen"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳元"
+            "value" : "翻訳元言語"
           }
         },
         "ko" : {
@@ -4828,7 +4885,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译自"
+            "value" : "源语言"
           }
         }
       }
@@ -4839,7 +4896,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auto-Detect"
+            "value" : "Auto-detect"
           }
         },
         "es" : {
@@ -4864,41 +4921,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自动检测"
-          }
-        }
-      }
-    },
-    "自动检测，自动识别输入语言" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-Detect. Detects the input language automatically"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Detección automática. Detecta el idioma de entrada automáticamente"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自動検出。入力言語を自動的に検出します"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "자동 감지. 입력 언어를 자동으로 인식합니다"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动检测，自动识别输入语言"
           }
         }
       }
@@ -4973,37 +4995,37 @@
         }
       }
     },
-    "自带 API Key · 更高质量" : {
+    "使用你自己的 API Key" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bring your own API key · Higher quality"
+            "value" : "Use your own API key"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Con tu propia clave de API · Mayor calidad"
+            "value" : "Usa tu propia clave de API"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "API キー持ち込み · より高品質"
+            "value" : "自分の API キーを使用"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "자체 API 키 · 더 높은 품질"
+            "value" : "개인 API 키 사용"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自带 API Key · 更高质量"
+            "value" : "使用你自己的 API Key"
           }
         }
       }
@@ -5026,7 +5048,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自社モデル"
+            "value" : "独自モデル"
           }
         },
         "ko" : {
@@ -5183,37 +5205,37 @@
         }
       }
     },
-    "译境 · 版本 1.0" : {
+    "%@ · 版本 %@" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verto · Version 1.0"
+            "value" : "%1$@ · Version %2$@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verto · Versión 1.0"
+            "value" : "%1$@ · Versión %2$@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verto · バージョン 1.0"
+            "value" : "%1$@ · バージョン %2$@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verto · 버전 1.0"
+            "value" : "%1$@ · 버전 %2$@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "译境 · 版本 1.0"
+            "value" : "%1$@ · 版本 %2$@"
           }
         }
       }
@@ -5714,7 +5736,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Match System"
+            "value" : "Match system"
           }
         },
         "es" : {
@@ -5743,142 +5765,142 @@
         }
       }
     },
-    "轻点下方按钮开始双语对话" : {
+    "轻点开始双语对话" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap the button below to start a bilingual conversation"
+            "value" : "Tap to start a bilingual conversation"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toca el botón de abajo para iniciar una conversación bilingüe"
+            "value" : "Toca para iniciar una conversación bilingüe"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下のボタンをタップしてバイリンガル会話を開始"
+            "value" : "タップしてバイリンガル会話を開始します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "아래 버튼을 탭하여 이중 언어 대화를 시작하세요"
+            "value" : "탭하여 이중 언어 대화를 시작합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点下方按钮开始双语对话"
+            "value" : "轻点开始双语对话"
           }
         }
       }
     },
-    "轻点丢弃这张照片并回到取景" : {
+    "丢弃当前照片并返回取景" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap to discard this photo and return to the viewfinder"
+            "value" : "Discards the current photo and returns to the viewfinder"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toca para descartar esta foto y volver al visor"
+            "value" : "Descarta la foto actual y vuelve al visor"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タップするとこの写真を破棄してファインダーに戻ります"
+            "value" : "現在の写真を破棄してファインダーに戻ります"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "누르면 이 사진을 지우고 뷰파인더로 돌아갑니다"
+            "value" : "현재 사진을 버리고 뷰파인더로 돌아갑니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点丢弃这张照片并回到取景"
+            "value" : "丢弃当前照片并返回取景"
           }
         }
       }
     },
-    "轻点切换闪光灯" : {
+    "切换闪光灯状态" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap to toggle the flash"
+            "value" : "Toggles the flash"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toca para alternar el flash"
+            "value" : "Activa o desactiva el flash"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タップしてフラッシュを切り替えます"
+            "value" : "フラッシュのオンとオフを切り替えます"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "탭하여 플래시를 전환합니다"
+            "value" : "플래시를 켜거나 끕니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点切换闪光灯"
+            "value" : "切换闪光灯状态"
           }
         }
       }
     },
-    "轻点后识别画面里的文字并就地显示译文" : {
+    "拍摄照片，识别文字并显示译文" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap to recognize the text on screen and show the translation in place"
+            "value" : "Captures a photo, recognizes its text, and shows the translation"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toca para reconocer el texto en pantalla y mostrar la traducción en su lugar"
+            "value" : "Captura una foto, reconoce el texto y muestra la traducción"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タップすると画面内の文字を認識し、その場に訳文を表示します"
+            "value" : "写真を撮影し、文字を認識して訳文を表示します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "누르면 화면의 텍스트를 인식해 그 자리에 번역을 표시합니다"
+            "value" : "사진을 촬영하고 텍스트를 인식해 번역문을 표시합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点后识别画面里的文字并就地显示译文"
+            "value" : "拍摄照片，识别文字并显示译文"
           }
         }
       }
@@ -6023,37 +6045,37 @@
         }
       }
     },
-    "轻量档不支持日文，日文会自动交给系统引擎。" : {
+    "轻量模型不含日文假名，日语使用系统文字识别。" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The lightweight model does not support Japanese; Japanese falls back to the system engine."
+            "value" : "The lightweight model does not include Japanese kana. Japanese uses system text recognition."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El modelo ligero no admite japonés; el japonés se procesa con el motor del sistema."
+            "value" : "El modelo ligero no incluye kana japonés. El japonés usa el reconocimiento de texto del sistema."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "軽量モデルは日本語に対応していないため、日本語はシステムのエンジンで認識します。"
+            "value" : "軽量モデルにはかなが含まれないため、日本語はシステムの文字認識を使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "경량 모델은 일본어를 지원하지 않아 일본어는 시스템 엔진으로 인식합니다."
+            "value" : "경량 모델에는 일본어 가나가 없습니다. 일본어는 시스템 텍스트 인식을 사용합니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻量档不支持日文，日文会自动交给系统引擎。"
+            "value" : "轻量模型不含日文假名，日语使用系统文字识别。"
           }
         }
       }
@@ -6093,37 +6115,37 @@
         }
       }
     },
-    "输入完成后，点按右上角对勾翻译" : {
+    "输入完成后，轻点完成并翻译" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "When you're done, tap the checkmark in the top right to translate"
+            "value" : "When you're done, tap Done and translate"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Al terminar, toca la marca de verificación de arriba a la derecha para traducir"
+            "value" : "Al terminar, toca Terminar y traducir"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "入力が終わったら右上のチェックマークをタップして翻訳します"
+            "value" : "入力が終わったら「完了して翻訳」をタップします"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "입력을 마친 후 오른쪽 상단의 체크 표시를 탭하여 번역하세요"
+            "value" : "입력을 마치면 ‘완료 후 번역’을 탭합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "输入完成后，点按右上角对勾翻译"
+            "value" : "输入完成后，轻点完成并翻译"
           }
         }
       }
@@ -6198,72 +6220,72 @@
         }
       }
     },
-    "选择为翻译到语言" : {
+    "设为目标语言" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Select as the target language"
+            "value" : "Set as the target language"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seleccionar como idioma de destino"
+            "value" : "Establece como idioma de destino"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳先の言語として選択します"
+            "value" : "翻訳先言語に設定します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 언어로 선택합니다"
+            "value" : "번역 언어로 설정합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择为翻译到语言"
+            "value" : "设为目标语言"
           }
         }
       }
     },
-    "选择为翻译自语言" : {
+    "设为源语言" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Select as the source language"
+            "value" : "Set as the source language"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seleccionar como idioma de origen"
+            "value" : "Establece como idioma de origen"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳元の言語として選択します"
+            "value" : "翻訳元言語に設定します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "원문 언어로 선택합니다"
+            "value" : "원문 언어로 설정합니다"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择为翻译自语言"
+            "value" : "设为源语言"
           }
         }
       }
@@ -6309,7 +6331,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose Language"
+            "value" : "Choose language"
           }
         },
         "es" : {

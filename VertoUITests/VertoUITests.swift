@@ -458,8 +458,8 @@ final class VertoUITests: XCTestCase {
 
         let rolePicker = app.segmentedControls["languagePicker.roleSelector"].firstMatch
         XCTAssertTrue(rolePicker.waitForExistence(timeout: 3))
-        let targetRole = rolePicker.buttons["翻译到"]
-        let sourceRole = rolePicker.buttons["翻译自"]
+        let targetRole = rolePicker.buttons["目标语言"]
+        let sourceRole = rolePicker.buttons["源语言"]
         XCTAssertTrue(targetRole.waitForExistence(timeout: 2))
         XCTAssertTrue(sourceRole.waitForExistence(timeout: 2))
         XCTAssertLessThan(sourceRole.frame.minX, targetRole.frame.minX, "源语言应排在目标语言左侧")
@@ -572,7 +572,7 @@ final class VertoUITests: XCTestCase {
 
         let form = element("settings.form", in: app)
         let closeButton = element("settings.closeButton", in: app)
-        let engineSection = app.staticTexts["翻译模型"].firstMatch
+        let engineSection = app.staticTexts["翻译服务"].firstMatch
         let googleEngine = app.buttons["settings.engine.google"].firstMatch
         let customEngine = app.buttons["settings.engine.custom"].firstMatch
         let llmEngine = app.buttons["settings.engine.llm"].firstMatch
@@ -995,6 +995,56 @@ final class VertoUITests: XCTestCase {
         XCTAssertEqual(historyButton.label, "History")
         historyButton.tap()
         XCTAssertTrue(app.staticTexts["History"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testFiveLanguageSettingsCopySmoke() {
+        let cases: [(
+            language: String,
+            locale: String,
+            settingsTitle: String,
+            serviceSection: String,
+            systemService: String,
+            onlineService: String,
+            versionMarker: String
+        )] = [
+            ("zh-Hans", "zh_Hans_CN", "设置", "翻译服务", "系统翻译", "谷歌翻译", "版本"),
+            ("en", "en_US", "Settings", "Translation service", "System Translation", "Google Translate", "Version"),
+            ("ja", "ja_JP", "設定", "翻訳サービス", "システム翻訳", "Google 翻訳", "バージョン"),
+            ("ko", "ko_KR", "설정", "번역 서비스", "시스템 번역", "Google 번역", "버전"),
+            ("es", "es_ES", "Ajustes", "Servicio de traducción", "Traducción del sistema", "Traductor de Google", "Versión"),
+        ]
+
+        for testCase in cases {
+            let app = launchApp(
+                mode: "text",
+                sheet: "settings",
+                language: testCase.language,
+                locale: testCase.locale
+            )
+            let form = element("settings.form", in: app)
+            XCTAssertTrue(form.waitForExistence(timeout: 3))
+            XCTAssertTrue(app.staticTexts[testCase.settingsTitle].waitForExistence(timeout: 2))
+            XCTAssertTrue(app.staticTexts[testCase.serviceSection].waitForExistence(timeout: 2))
+
+            let activeService = app.buttons["settings.engine.google"].firstMatch
+            XCTAssertTrue(activeService.waitForExistence(timeout: 2))
+            XCTAssertTrue(
+                activeService.label.contains(testCase.systemService)
+                    || activeService.label.contains(testCase.onlineService)
+            )
+            captureScreenshot(named: "settings-copy-\(testCase.language)-top", of: app)
+
+            let version = element("settings.version", in: app)
+            for _ in 0..<6 {
+                if version.exists { break }
+                dragUp(in: form, byFractionOfHeight: 1.0 / 3.0)
+            }
+            XCTAssertTrue(version.waitForExistence(timeout: 2))
+            XCTAssertTrue(version.label.contains(testCase.versionMarker))
+            captureScreenshot(named: "settings-copy-\(testCase.language)-bottom", of: app)
+            app.terminate()
+        }
     }
 
     @MainActor

@@ -180,7 +180,7 @@ struct VoiceConversationView: View {
             Image(systemName: "mic.badge.plus")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(AppTheme.faint)
-            Text("轻点下方按钮开始双语对话")
+            Text("轻点开始双语对话")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(AppTheme.faint)
         }

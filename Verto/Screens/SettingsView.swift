@@ -19,6 +19,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var settings: AppSettings
+    private let relayConfigured = TranslationRelayConfiguration.fromBundle() != nil
     /// 高精度识别模型的安装状态。为 nil 时整节不显示——UI 测试的罐头相机路径
     /// 不接这一路，没有可管理的模型。
     var ocrModelCatalog: OCRModelCatalog?
@@ -70,9 +71,9 @@ struct SettingsView: View {
     // Picker option 只负责纵向内容；Form inset 同时约束标签和系统勾，保持行尾对齐。
     private var engineSection: some View {
         Section {
-            Picker("翻译模型", selection: $settings.translationEngine) {
+            Picker("翻译服务", selection: $settings.translationEngine) {
                 ForEach(TranslationEngine.allCases) { engine in
-                    EngineRow(engine: engine)
+                    EngineRow(engine: engine, relayConfigured: relayConfigured)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("settings.engine.\(engine.rawValue)")
                         .tag(engine)
@@ -86,7 +87,7 @@ struct SettingsView: View {
             .listRowBackground(AppTheme.card)
             .listRowSeparatorTint(AppTheme.divider)
         } header: {
-            SectionLabel(text: "翻译模型")
+            SectionLabel(text: "翻译服务")
                 .textCase(nil)
         }
     }
@@ -172,25 +173,37 @@ struct SettingsView: View {
     }
 
     private var footer: some View {
-        Text("译境 · 版本 1.0")
+        Text(versionText)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(AppTheme.faint)
             .frame(maxWidth: .infinity)
             .padding(.top, 22)
+            .accessibilityIdentifier("settings.version")
+    }
+
+    private var versionText: String {
+        let displayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "Verto"
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+            return displayName
+        }
+        return String(localized: "\(displayName) · 版本 \(version)")
     }
 
 }
 
 private struct EngineRow: View {
     let engine: TranslationEngine
+    let relayConfigured: Bool
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(engine.displayName)
+                Text(engine.displayName(relayConfigured: relayConfigured))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(engine.isAvailable ? AppTheme.ink : AppTheme.faint)
-                Text(engine.subtitle)
+                Text(engine.subtitle(relayConfigured: relayConfigured))
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(AppTheme.faint)
             }

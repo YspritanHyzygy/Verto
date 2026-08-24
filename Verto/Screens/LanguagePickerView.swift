@@ -189,12 +189,12 @@ struct LanguagePickerView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(
             language.isAuto
-                ? Text("自动检测，自动识别输入语言")
+                ? Text("自动识别输入语言")
                 : Text(verbatim: "\(language.nativeName)，\(language.localizedName)")
         )
         .accessibilityValue(language == activeSelection ? "已选择" : "")
         // 整句成对，不做「选择为%@语言」的语序拼接——各语言语序不同。
-        .accessibilityHint(effectiveRole == .source ? "选择为翻译自语言" : "选择为翻译到语言")
+        .accessibilityHint(effectiveRole == .source ? "设为源语言" : "设为目标语言")
         .accessibilityIdentifier("languagePicker.language.\(language.code)")
         .listRowInsets(EdgeInsets())
         .listRowBackground(AppTheme.card)

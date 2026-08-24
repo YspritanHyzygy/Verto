@@ -50,8 +50,8 @@ enum LanguageSelectionRole: String, Identifiable {
 
     var title: String {
         switch self {
-        case .source: String(localized: "翻译自")
-        case .target: String(localized: "翻译到")
+        case .source: String(localized: "源语言")
+        case .target: String(localized: "目标语言")
         }
     }
 }

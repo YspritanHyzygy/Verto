@@ -131,7 +131,7 @@ struct CameraTranslateView: View {
                 glassCircleButton(
                     systemName: "xmark",
                     label: String(localized: "重拍"),
-                    hint: String(localized: "轻点丢弃这张照片并回到取景"),
+                    hint: String(localized: "丢弃当前照片并返回取景"),
                     identifier: "camera.retakeButton",
                     action: resetCapture
                 )
@@ -206,7 +206,7 @@ struct CameraTranslateView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(role.title)
         .accessibilityValue(selectedLanguage.nativeName)
-        .accessibilityHint(role == .source ? "选择为翻译自语言" : "选择为翻译到语言")
+        .accessibilityHint(role == .source ? "设为源语言" : "设为目标语言")
         .accessibilityIdentifier("camera.language.\(role.rawValue)")
     }
 
@@ -304,7 +304,7 @@ struct CameraTranslateView: View {
         case .translating:
             compactStatus(String(localized: "正在翻译…"), showsProgress: true)
         case .done:
-            compactStatus(String(localized: "已翻译 · 轻点任意文字查看原文"), showsProgress: false)
+            compactStatus(String(localized: "翻译完成 · 轻点译文查看原文"), showsProgress: false)
         case .idle, .ready, .failed:
             EmptyView()
         }
@@ -436,7 +436,7 @@ struct CameraTranslateView: View {
             .buttonStyle(.plain)
             .disabled(!controller.canCapture)
             .accessibilityLabel("拍摄并翻译")
-            .accessibilityHint("轻点后识别画面里的文字并就地显示译文")
+            .accessibilityHint("拍摄照片，识别文字并显示译文")
             .accessibilityIdentifier("camera.shutterButton")
 
             Spacer()
@@ -461,7 +461,7 @@ struct CameraTranslateView: View {
             .accessibilityLabel("闪光灯")
             // 不用裸「关闭」：与关闭按钮的「关闭」（Close）同 key 异义，目录里无法各翻各的。
             .accessibilityValue(controller.isFlashOn ? "已开启" : "已关闭")
-            .accessibilityHint("轻点切换闪光灯")
+            .accessibilityHint("切换闪光灯状态")
             .accessibilityIdentifier("camera.flashButton")
         }
         // 页面已有 18pt 外边距；再内收 16pt 后两侧净空为 34pt，同时保持快门绝对居中。

@@ -44,7 +44,7 @@ enum SpeechTranscriptionError: LocalizedError, Equatable {
         switch self {
         case .microphoneDenied: String(localized: "未获得麦克风权限，请在系统设置中开启")
         case .speechAuthorizationDenied: String(localized: "未获得语音识别权限，请在系统设置中开启")
-        case .recognizerUnavailable: String(localized: "当前设备暂不支持识别这种语言")
+        case .recognizerUnavailable: String(localized: "此设备无法识别这种语言，请选择其他语言")
         case .assetUnavailable: String(localized: "语音识别模型未就绪，请联网后重试")
         case .audioSessionFailure: String(localized: "麦克风启动失败，请重试")
         case .recognitionFailed: String(localized: "语音识别出错，请重试")

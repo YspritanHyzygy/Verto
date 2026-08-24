@@ -16,7 +16,7 @@
 
 import SwiftUI
 
-/// 设置页里的「拍照识别引擎」一节：三档模型的选择、下载、删除。
+/// 设置页里的「文字识别」一节：三档模型的选择、下载、删除。
 struct OCRModelSection: View {
     let catalog: OCRModelCatalog
 
@@ -27,7 +27,7 @@ struct OCRModelSection: View {
                     .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue)")
             }
         } header: {
-            SectionLabel(text: "拍照识别引擎")
+            SectionLabel(text: "文字识别")
         } footer: {
             footer
         }
@@ -46,7 +46,7 @@ struct OCRModelSection: View {
                             .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
                             .foregroundStyle(AppTheme.ink)
                         if tier == .default {
-                            Text("推荐")
+                            Text("默认")
                                 .font(.system(size: 11, weight: .medium))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -128,17 +128,15 @@ struct OCRModelSection: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 说清楚"下载了也不是万能"，免得用户拍韩文发现没变好以为坏了。
-            Text("未下载时使用系统识别引擎。韩语始终由系统引擎识别。")
+            Text("未安装模型时使用系统文字识别。韩语始终使用系统文字识别。")
                 .font(.system(size: 12))
                 .foregroundStyle(AppTheme.secondaryInk)
             if catalog.selectedTier == .tiny {
-                Text("轻量档不支持日文，日文会自动交给系统引擎。")
+                Text("轻量模型不含日文假名，日语使用系统文字识别。")
                     .font(.system(size: 12))
                     .foregroundStyle(AppTheme.secondaryInk)
             }
-            // 三档速度差在几十毫秒量级，说"高精度更慢"会把人吓住，如实写。
-            Text("精度越高模型越大，识别耗时差异在几十毫秒内，基本感觉不到。")
+            Text("精度越高，模型下载体积越大。")
                 .font(.system(size: 12))
                 .foregroundStyle(AppTheme.secondaryInk)
         }

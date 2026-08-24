@@ -204,7 +204,7 @@ enum TextRecognitionError: LocalizedError, Equatable {
         switch self {
         case .noTextFound: String(localized: "画面里没有找到文字，换个角度再试")
         case .recognitionFailed: String(localized: "文字识别出错，请重试")
-        case .unsupportedLanguage: String(localized: "当前设备暂不支持识别这种语言")
+        case .unsupportedLanguage: String(localized: "此设备无法识别这种语言，请选择其他语言")
         }
     }
 }
