@@ -87,7 +87,7 @@ iOS 26 及更高版本在系统支持时使用 SpeechAnalyzer 和 SpeechTranscri
 
 相机页可以拍照或从照片库选择图片。文字识别在设备上完成，译文按照识别出的四边形覆盖在原文位置，并沿用原图中的倾角、背景色和文字颜色。轻点译文块可以查看原文与译文，随后复制、朗读或存入历史记录。
 
-系统 Vision 是基础识别方式。下载 PP-OCRv6 模型包后，相机页会使用 Core ML 版检测与识别模型。设置页提供轻量、均衡和最高精度三档，并直接从 [`OCRModelTier`](Verto/Camera/OCRModelPack.swift) 读取下载大小和识别分数。韩语始终使用系统文字识别；轻量模型不含日文假名，日语也会使用系统文字识别。
+系统 Vision 是基础识别方式。下载 PP-OCRv6 模型包后，相机页会使用 Core ML 版检测与识别模型。模型包由独立的 [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) 工程构建并发布。设置页提供轻量、均衡和最高精度三档，并直接从 [`OCRModelTier`](Verto/Camera/OCRModelPack.swift) 读取下载大小和识别分数。韩语始终使用系统文字识别；轻量模型不含日文假名，日语也会使用系统文字识别。
 
 识别行会按照栏位、间距、倾角和字号合并为段落。分组判据由 [`TextDetectionPostProcess`](Verto/Camera/TextDetectionPostProcess.swift) 维护。照片输出保留取景时的方向，识别副本按照 `AVCaptureDevice.RotationCoordinator` 的方向处理，识别框随后映射回原图坐标。
 

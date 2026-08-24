@@ -21,7 +21,8 @@ import Foundation
 /// 基于 PP-OCRv6（转 Core ML）的端侧文字识别。
 ///
 /// 两段式：检测模型给出每行文字的旋转框，识别模型逐行读出文字。前后处理参数
-/// 与 `tools/build-ocr-models` 里的转换脚本严格对应，改一边必须改另一边。
+/// 与 `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/scripts/build_models.py`
+/// 严格对应，改一边必须改另一边。
 ///
 /// 模型不随 app 分发，由 `OCRModelCatalog` 下载安装；本类型只负责用。
 final class PaddleTextRecognitionService: TextRecognitionService {

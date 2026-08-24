@@ -19,14 +19,51 @@ import UIKit
 import XCTest
 @testable import Verto
 
+final class OCRModelPackMetadataTests: XCTestCase {
+    func testPublishedReleaseContract() throws {
+        let expected: [OCRModelTier: (name: String, bytes: Int64, sha256: String)] = [
+            .tiny: (
+                "pp-ocr-v6-coreml-tiny-v1.aar", 2_915_454,
+                "c0eba9a3affa1f2a5591e07739d9ca861d9f9417bf0258e56c1b06e9299a1aba"
+            ),
+            .small: (
+                "pp-ocr-v6-coreml-small-v1.aar", 12_999_796,
+                "8f32f551fdddd7cb136ce54e7566aa453e1ca6f7c1f6a6ae7d1f75de1addfe10"
+            ),
+            .medium: (
+                "pp-ocr-v6-coreml-medium-v1.aar", 47_521_629,
+                "960ed7c0065e3d21d1b52cc1a0ae3fb1b28911d5735f455cc82483009c3128be"
+            ),
+        ]
+
+        XCTAssertEqual(OCRModelPack.version, "1")
+        for tier in OCRModelTier.allCases {
+            let contract = try XCTUnwrap(expected[tier])
+            XCTAssertEqual(tier.archiveName, contract.name)
+            XCTAssertEqual(tier.downloadBytes, contract.bytes)
+            XCTAssertEqual(tier.sha256, contract.sha256)
+            XCTAssertEqual(
+                tier.archiveURL.absoluteString,
+                "https://github.com/YspritanHyzygy/PP-OCR-for-Apple/releases/download/v1/\(contract.name)"
+            )
+        }
+    }
+
+    func testInstalledV1DirectoryDoesNotDependOnRemoteAssetName() throws {
+        let directory = try OCRModelPack.installDirectory(for: .small)
+        XCTAssertTrue(directory.path.hasSuffix("/OCRModels/v1/small"))
+        XCTAssertFalse(directory.path.contains("pp-ocr-v6-coreml"))
+    }
+}
+
 /// 诊断探针：拿**真实的** Core ML 模型端到端跑一遍高精度识别管线。
 ///
 /// 存在的理由：检测后处理（连通域/凸包/旋转卡壳/unclip）、旋转裁切和 CTC 解码
 /// 加起来约 600 行是重写的，几何写错不会崩、只会安静地给出错结果。
 /// 单测能覆盖纯函数，但"这一整条链路接起来还是同一个 OCR"只有真模型能回答。
 ///
-/// 模型不在仓库里（14MB~47MB，由 GitHub Release 分发），所以用环境变量指路：
-///     VERTO_OCR_MODEL_DIR=/private/tmp/verto-ocr-build/out/small
+/// 模型不在仓库里（14MB~47MB，由 PP-OCR-for-Apple Release 分发），所以用环境变量指路：
+///     VERTO_OCR_MODEL_DIR=/private/tmp/pp-ocr-for-apple/out/small
 /// 没设就跳过并说明原因，不伪装成通过。
 final class PaddleOCRProbeTests: XCTestCase {
     /// 探针图上的原文，由测试自己画上去，不是 app 里的演示数据。
@@ -38,7 +75,7 @@ final class PaddleOCRProbeTests: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_DIR"] else {
             throw XCTSkip("""
                 未设置 VERTO_OCR_MODEL_DIR，跳过真实模型探针。
-                先跑 tools/build-ocr-models/build_models.py 产出模型，再把某一档目录指过来。
+                先在 PP-OCR-for-Apple 仓库运行 scripts/build_models.py，再把某一档目录指过来。
                 """)
         }
         let root = URL(fileURLWithPath: directory)
