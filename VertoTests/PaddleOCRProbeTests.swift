@@ -15,6 +15,7 @@
 //
 
 import CoreML
+import Darwin
 import UIKit
 import XCTest
 @testable import Verto
@@ -146,23 +147,89 @@ final class PaddleOCRProbeTests: XCTestCase {
         let detectionPredictions: [CorpusLine]
         let predictions: [CorpusLine]
         let timingsMilliseconds: [String: Double]
+        let measurements: [BenchmarkMeasurement]
+    }
+
+    private struct BenchmarkMeasurement: Encodable {
+        let timingsMilliseconds: [String: Double]
+        let thermalStateBefore: String
+        let thermalStateAfter: String
+        let residentMemoryBytesBefore: UInt64?
+        let residentMemoryBytesAfter: UInt64?
+        let processLifetimePeakResidentBytes: UInt64?
     }
 
     private struct BenchmarkReport: Encodable {
+        struct EnergyEvidence: Encodable {
+            let source: String
+            let joules: Double?
+            let artifact: String?
+        }
+
         struct Run: Encodable {
             let tier: String
+            let candidate: String
+            let candidateKind: String
+            let parentCandidate: String?
             let device: String
+            let deviceLabel: String?
+            let hardwareIdentifier: String
+            let hardwareGroup: String?
             let systemVersion: String
             let operatingSystem: String
             let computeUnits: String
+            let evidenceClass: String
+            let availableComputeDevices: [String]
             let warmupRuns: Int
+            let measurementRunsPerSample: Int
             let coldCompileMilliseconds: Double
             let coldLoadMilliseconds: Double
+            let thermalStateStart: String
+            let thermalStateEnd: String
+            let residentMemoryBytesStart: UInt64?
+            let residentMemoryBytesEnd: UInt64?
+            let processLifetimePeakResidentBytes: UInt64?
+            let energy: EnergyEvidence
         }
 
         let schemaVersion: Int
         let run: Run
+        let computePlans: [ComputePlanReport]
         let samples: [OutputSample]
+    }
+
+    private struct ComputePlanReport: Encodable {
+        let component: String
+        let status: String
+        let operations: [ComputePlanOperation]
+        let error: String?
+    }
+
+    private struct ComputePlanOperation: Encodable {
+        let path: String
+        let operatorName: String
+        let estimatedCostWeight: Double?
+        let preferredComputeDevice: String?
+        let supportedComputeDevices: [String]
+        /// Core ML 不提供自然语言原因。这里只把 API 能证明的两种情况原样分类，
+        /// 不在被测 App 里判断模型是否“ANE 友好”。
+        let fallbackReason: String?
+    }
+
+    private enum ProbeComputeUnits: String, CaseIterable {
+        case all
+        case cpuAndNeuralEngine
+        case cpuAndGPU
+        case cpuOnly
+
+        var coreMLValue: MLComputeUnits {
+            switch self {
+            case .all: .all
+            case .cpuAndNeuralEngine: .cpuAndNeuralEngine
+            case .cpuAndGPU: .cpuAndGPU
+            case .cpuOnly: .cpuOnly
+            }
+        }
     }
 
     func testProbePaddleRecognitionPipeline() async throws {
@@ -197,7 +264,9 @@ final class PaddleOCRProbeTests: XCTestCase {
 
         let service: PaddleTextRecognitionService
         do {
-            service = try PaddleTextRecognitionService(model: model)
+            service = try PaddleTextRecognitionService(
+                model: model, computeUnits: try Self.computeUnits().coreMLValue
+            )
         } catch {
             report.append("加载模型/字表抛错: \(error)")
             throw error
@@ -257,6 +326,7 @@ final class PaddleOCRProbeTests: XCTestCase {
         }
 
         let tier = try Self.modelTier()
+        let computeUnits = try Self.computeUnits()
         let corpusURL = URL(fileURLWithPath: corpusPath)
         let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: corpusURL))
         XCTAssertEqual(corpus.schemaVersion, 1)
@@ -268,8 +338,13 @@ final class PaddleOCRProbeTests: XCTestCase {
         )
         let coldCompileMilliseconds = Date().timeIntervalSince(compileStarted) * 1000
         let loadStarted = Date()
-        let service = try PaddleTextRecognitionService(model: model)
+        let service = try PaddleTextRecognitionService(
+            model: model, computeUnits: computeUnits.coreMLValue
+        )
         let coldLoadMilliseconds = Date().timeIntervalSince(loadStarted) * 1000
+        let computePlans = await Self.computePlanReports(
+            for: model, computeUnits: computeUnits.coreMLValue
+        )
         let resolved = try corpus.samples.map { sample -> (CorpusSample, CGImage) in
             let language = try XCTUnwrap(
                 Language.all.first { $0.code == sample.language },
@@ -283,23 +358,45 @@ final class PaddleOCRProbeTests: XCTestCase {
         }
 
         let warmupRuns = Int(environment["VERTO_OCR_WARMUP_RUNS"] ?? "3") ?? 3
+        let measurementRuns = max(
+            1, Int(environment["VERTO_OCR_MEASUREMENT_RUNS"] ?? "1") ?? 1
+        )
         if let first = resolved.first {
             for _ in 0..<max(0, warmupRuns) {
                 _ = try? await service.recognizeLines(in: first.1)
             }
         }
 
+        let thermalStateStart = Self.thermalStateName(ProcessInfo.processInfo.thermalState)
+        let memoryStart = Self.memorySnapshot()
         var outputs: [OutputSample] = []
         for (sample, image) in resolved {
-            let started = Date()
-            let pipeline = try await service.runPipeline(
-                in: image,
-                collectTimings: true,
-                recognizeText: sample.evaluationTask != "detection"
-            )
-            let elapsed = Date().timeIntervalSince(started) * 1000
-            var timings = pipeline.timingsMilliseconds
-            timings["endToEnd"] = elapsed
+            var pipeline: PaddleTextRecognitionService.PipelineOutput?
+            var measurements: [BenchmarkMeasurement] = []
+            for _ in 0..<measurementRuns {
+                let thermalBefore = Self.thermalStateName(ProcessInfo.processInfo.thermalState)
+                let memoryBefore = Self.memorySnapshot()
+                let started = Date()
+                let current = try await service.runPipeline(
+                    in: image,
+                    collectTimings: true,
+                    recognizeText: sample.evaluationTask != "detection"
+                )
+                let elapsed = Date().timeIntervalSince(started) * 1000
+                var timings = current.timingsMilliseconds
+                timings["endToEnd"] = elapsed
+                let memoryAfter = Self.memorySnapshot()
+                measurements.append(BenchmarkMeasurement(
+                    timingsMilliseconds: timings,
+                    thermalStateBefore: thermalBefore,
+                    thermalStateAfter: Self.thermalStateName(ProcessInfo.processInfo.thermalState),
+                    residentMemoryBytesBefore: memoryBefore?.resident,
+                    residentMemoryBytesAfter: memoryAfter?.resident,
+                    processLifetimePeakResidentBytes: memoryAfter?.lifetimePeak
+                ))
+                pipeline = current
+            }
+            let measuredPipeline = try XCTUnwrap(pipeline)
             outputs.append(OutputSample(
                 id: sample.id,
                 dataset: sample.dataset,
@@ -307,29 +404,53 @@ final class PaddleOCRProbeTests: XCTestCase {
                 scenario: sample.scenario,
                 evaluationTask: sample.evaluationTask,
                 groundTruth: sample.groundTruth,
-                detectionPredictions: pipeline.detectionQuads.map {
+                detectionPredictions: measuredPipeline.detectionQuads.map {
                     Self.corpusLine(from: $0, text: "", image: image)
                 },
-                predictions: pipeline.lines.map { Self.corpusLine(from: $0, image: image) },
-                timingsMilliseconds: timings
+                predictions: measuredPipeline.lines.map { Self.corpusLine(from: $0, image: image) },
+                // 兼容 v1 评测器；v2 评测器会使用下方完整的原始 measurements。
+                timingsMilliseconds: measurements[0].timingsMilliseconds,
+                measurements: measurements
             ))
         }
 
+        let memoryEnd = Self.memorySnapshot()
         let device = await MainActor.run {
             (model: UIDevice.current.model, systemVersion: UIDevice.current.systemVersion)
         }
         let report = BenchmarkReport(
-            schemaVersion: 1,
+            schemaVersion: 2,
             run: .init(
                 tier: tier.rawValue,
+                candidate: environment["VERTO_OCR_CANDIDATE"] ?? "unspecified",
+                candidateKind: environment["VERTO_OCR_CANDIDATE_KIND"] ?? "unspecified",
+                parentCandidate: environment["VERTO_OCR_PARENT_CANDIDATE"],
                 device: device.model,
+                deviceLabel: environment["VERTO_OCR_DEVICE_LABEL"],
+                hardwareIdentifier: Self.hardwareIdentifier(),
+                hardwareGroup: environment["VERTO_OCR_HARDWARE_GROUP"],
                 systemVersion: device.systemVersion,
                 operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
-                computeUnits: "ALL",
+                computeUnits: computeUnits.rawValue,
+                evidenceClass: Self.evidenceClass(environment: environment),
+                availableComputeDevices: MLModel.availableComputeDevices
+                    .map(Self.computeDeviceName).sorted(),
                 warmupRuns: max(0, warmupRuns),
+                measurementRunsPerSample: measurementRuns,
                 coldCompileMilliseconds: coldCompileMilliseconds,
-                coldLoadMilliseconds: coldLoadMilliseconds
+                coldLoadMilliseconds: coldLoadMilliseconds,
+                thermalStateStart: thermalStateStart,
+                thermalStateEnd: Self.thermalStateName(ProcessInfo.processInfo.thermalState),
+                residentMemoryBytesStart: memoryStart?.resident,
+                residentMemoryBytesEnd: memoryEnd?.resident,
+                processLifetimePeakResidentBytes: memoryEnd?.lifetimePeak,
+                energy: .init(
+                    source: environment["VERTO_OCR_ENERGY_SOURCE"] ?? "notMeasured",
+                    joules: environment["VERTO_OCR_ENERGY_JOULES"].flatMap(Double.init),
+                    artifact: environment["VERTO_OCR_ENERGY_ARTIFACT"]
+                )
             ),
+            computePlans: computePlans,
             samples: outputs
         )
         let encoder = JSONEncoder()
@@ -390,11 +511,227 @@ final class PaddleOCRProbeTests: XCTestCase {
         XCTAssertFalse(dense.contains(sentinel), "读到了补齐区的填充值")
     }
 
+    func testProbeComputeUnitMappingAndProductionDefault() throws {
+        let expected: [ProbeComputeUnits: MLComputeUnits] = [
+            .all: .all,
+            .cpuAndNeuralEngine: .cpuAndNeuralEngine,
+            .cpuAndGPU: .cpuAndGPU,
+            .cpuOnly: .cpuOnly,
+        ]
+        for (probe, coreML) in expected {
+            XCTAssertEqual(probe.coreMLValue, coreML)
+        }
+        XCTAssertEqual(PaddleTextRecognitionService.productionComputeUnits, .all)
+    }
+
+    func testComputePlanAvailabilityBoundaryIsIOS174() {
+        XCTAssertFalse(Self.computePlanAvailable(on: .init(majorVersion: 17, minorVersion: 3, patchVersion: 9)))
+        XCTAssertTrue(Self.computePlanAvailable(on: .init(majorVersion: 17, minorVersion: 4, patchVersion: 0)))
+        XCTAssertTrue(Self.computePlanAvailable(on: .init(majorVersion: 18, minorVersion: 0, patchVersion: 0)))
+    }
+
     // MARK: - 辅助
 
     private static func modelTier() throws -> OCRModelTier {
         let value = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_TIER"] ?? "small"
         return try XCTUnwrap(OCRModelTier(rawValue: value), "无效的 VERTO_OCR_MODEL_TIER：\(value)")
+    }
+
+    private static func computeUnits() throws -> ProbeComputeUnits {
+        let value = ProcessInfo.processInfo.environment["VERTO_OCR_COMPUTE_UNITS"] ?? "all"
+        return try XCTUnwrap(
+            ProbeComputeUnits(rawValue: value),
+            "无效的 VERTO_OCR_COMPUTE_UNITS：\(value)"
+        )
+    }
+
+    private static func evidenceClass(environment: [String: String]) -> String {
+        if let value = environment["VERTO_OCR_EVIDENCE_CLASS"] { return value }
+#if targetEnvironment(simulator)
+        return "simulator"
+#else
+        return "unspecifiedPhysical"
+#endif
+    }
+
+    private static func thermalStateName(_ state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: "nominal"
+        case .fair: "fair"
+        case .serious: "serious"
+        case .critical: "critical"
+        @unknown default: "unknown"
+        }
+    }
+
+    private static func computeDeviceName(_ device: MLComputeDevice) -> String {
+        switch device {
+        case .cpu: "cpu"
+        case .gpu: "gpu"
+        case .neuralEngine: "neuralEngine"
+        @unknown default: "unknown"
+        }
+    }
+
+    private static func computePlanAvailable(on version: OperatingSystemVersion) -> Bool {
+        version.majorVersion > 17
+            || (version.majorVersion == 17 && version.minorVersion >= 4)
+    }
+
+    private struct MemorySnapshot {
+        let resident: UInt64
+        let lifetimePeak: UInt64
+    }
+
+    private static func memorySnapshot() -> MemorySnapshot? {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(
+                    mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count
+                )
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        return MemorySnapshot(
+            resident: UInt64(info.resident_size),
+            lifetimePeak: UInt64(info.resident_size_max)
+        )
+    }
+
+    private static func hardwareIdentifier() -> String {
+        var value = utsname()
+        guard uname(&value) == 0 else { return "unknown" }
+        return withUnsafePointer(to: &value.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(cString: $0)
+            }
+        }
+    }
+
+    private static func computePlanReports(
+        for model: InstalledOCRModel,
+        computeUnits: MLComputeUnits
+    ) async -> [ComputePlanReport] {
+        guard #available(iOS 17.4, *) else {
+            return ["detector", "recognizer"].map {
+                ComputePlanReport(
+                    component: $0,
+                    status: "unavailableBeforeiOS17.4",
+                    operations: [],
+                    error: nil
+                )
+            }
+        }
+        let configuration = MLModelConfiguration()
+        configuration.computeUnits = computeUnits
+        var reports: [ComputePlanReport] = []
+        for (component, url) in [
+            ("detector", model.detectorURL),
+            ("recognizer", model.recognizerURL),
+        ] {
+            do {
+                let plan = try await MLComputePlan.load(
+                    contentsOf: url, configuration: configuration
+                )
+                reports.append(ComputePlanReport(
+                    component: component,
+                    status: "available",
+                    operations: operationReports(from: plan),
+                    error: nil
+                ))
+            } catch {
+                reports.append(ComputePlanReport(
+                    component: component,
+                    status: "error",
+                    operations: [],
+                    error: String(describing: error)
+                ))
+            }
+        }
+        return reports
+    }
+
+    @available(iOS 17.4, *)
+    private static func operationReports(from plan: MLComputePlan) -> [ComputePlanOperation] {
+        func report(
+            path: String,
+            operatorName: String,
+            usage: MLComputePlan.DeviceUsage?,
+            cost: MLComputePlan.Cost?
+        ) -> ComputePlanOperation {
+            let supported = usage?.supported.map(computeDeviceName).sorted() ?? []
+            let preferred = usage.map { computeDeviceName($0.preferred) }
+            let fallbackReason: String?
+            if usage == nil {
+                fallbackReason = "deviceUsageUnavailable"
+            } else if preferred == "neuralEngine" {
+                fallbackReason = nil
+            } else if !supported.contains("neuralEngine") {
+                fallbackReason = "neuralEngineUnsupported"
+            } else {
+                fallbackReason = "coreMLPreferredOtherDevice"
+            }
+            return ComputePlanOperation(
+                path: path,
+                operatorName: operatorName,
+                estimatedCostWeight: cost?.weight,
+                preferredComputeDevice: preferred,
+                supportedComputeDevices: supported,
+                fallbackReason: fallbackReason
+            )
+        }
+
+        func programBlock(
+            _ block: MLModelStructure.Program.Block,
+            path: String
+        ) -> [ComputePlanOperation] {
+            block.operations.enumerated().flatMap { index, operation in
+                let operationPath = "\(path)/\(index):\(operation.operatorName)"
+                let current = report(
+                    path: operationPath,
+                    operatorName: operation.operatorName,
+                    usage: plan.deviceUsage(for: operation),
+                    cost: plan.estimatedCost(of: operation)
+                )
+                let children = operation.blocks.enumerated().flatMap { blockIndex, child in
+                    programBlock(child, path: "\(operationPath)/block\(blockIndex)")
+                }
+                return [current] + children
+            }
+        }
+
+        func walkStructure(
+            _ modelStructure: MLModelStructure,
+            path: String
+        ) -> [ComputePlanOperation] {
+            switch modelStructure {
+            case let .program(program):
+                return program.functions.sorted { $0.key < $1.key }.flatMap { name, function in
+                    programBlock(function.block, path: "\(path)/function:\(name)")
+                }
+            case let .neuralNetwork(network):
+                return network.layers.enumerated().map { index, layer in
+                    report(
+                        path: "\(path)/\(index):\(layer.name)",
+                        operatorName: layer.type,
+                        usage: plan.deviceUsage(for: layer),
+                        cost: nil
+                    )
+                }
+            case let .pipeline(pipeline):
+                return zip(pipeline.subModelNames, pipeline.subModels).flatMap { name, submodel in
+                    walkStructure(submodel, path: "\(path)/submodel:\(name)")
+                }
+            case .unsupported:
+                return []
+            @unknown default:
+                return []
+            }
+        }
+
+        return walkStructure(plan.modelStructure, path: "model")
     }
 
     private static func compile(from root: URL, tier: OCRModelTier) async throws -> InstalledOCRModel {
