@@ -26,11 +26,13 @@ final class TextDetectionPostProcessTests: XCTestCase {
     // MARK: - 超参数
 
     func testHyperParametersFollowTheModelsOwnInferenceConfig() {
-        // 这四个数来自 PP-OCRv6_*_det_onnx 仓库里的 inference.yml，
+        // 这些数来自 PP-OCRv6_*_det_onnx 仓库里的 inference.yml，
         // **不是** PaddleOCR 命令行的默认值（那套是 0.3 / 0.6 / 1.5 / 512，v4 口径，
         // 三个阈值全都更严，曾经抄的就是它）。改这里之前先去看模型自带的配置。
         XCTAssertEqual(TextDetectionPostProcess.binarizationThreshold, 0.2)
-        XCTAssertEqual(TextDetectionPostProcess.boxScoreThreshold, 0.45)
+        XCTAssertEqual(OCRModelTier.tiny.correctedBoxScoreThreshold, 0.40)
+        XCTAssertEqual(OCRModelTier.small.correctedBoxScoreThreshold, 0.45)
+        XCTAssertEqual(OCRModelTier.medium.correctedBoxScoreThreshold, 0.45)
         XCTAssertEqual(TextDetectionPostProcess.unclipRatio, 1.4)
         XCTAssertEqual(TextDetectionPostProcess.maximumBoxes, 3000)
     }
@@ -108,7 +110,8 @@ final class TextDetectionPostProcessTests: XCTestCase {
 
         let boxes = TextDetectionPostProcess.boxes(
             probabilities: probabilities, width: width, height: height,
-            validWidth: width, validHeight: height
+            validWidth: width, validHeight: height,
+            boxScoreThreshold: OCRModelTier.small.boxScoreThreshold
         )
 
         XCTAssertEqual(boxes.count, 1, "0.5 的文字块被 box_thresh 毙了，阈值又回到 0.6 了")
@@ -127,7 +130,8 @@ final class TextDetectionPostProcessTests: XCTestCase {
 
         let boxes = TextDetectionPostProcess.boxes(
             probabilities: probabilities, width: width, height: height,
-            validWidth: width, validHeight: height
+            validWidth: width, validHeight: height,
+            boxScoreThreshold: OCRModelTier.small.boxScoreThreshold
         )
         let box = try XCTUnwrap(boxes.first, "实心块本身就该出框")
 
@@ -158,7 +162,8 @@ final class TextDetectionPostProcessTests: XCTestCase {
 
         let boxes = TextDetectionPostProcess.boxes(
             probabilities: probabilities, width: width, height: height,
-            validWidth: width, validHeight: height
+            validWidth: width, validHeight: height,
+            boxScoreThreshold: OCRModelTier.small.boxScoreThreshold
         )
         let box = try XCTUnwrap(boxes.first)
 
@@ -196,9 +201,30 @@ final class TextDetectionPostProcessTests: XCTestCase {
 
         let boxes = TextDetectionPostProcess.boxes(
             probabilities: probabilities, width: side, height: side,
-            validWidth: valid, validHeight: valid
+            validWidth: valid, validHeight: valid,
+            boxScoreThreshold: OCRModelTier.small.boxScoreThreshold
         )
 
         XCTAssertTrue(boxes.isEmpty, "补边区被当成文字了")
+    }
+
+    func testTinyKeepsAWeakBoxThatSmallAndMediumReject() {
+        let width = 16, height = 12
+        var probabilities = [Float](repeating: 0, count: width * height)
+        for y in 3..<9 {
+            for x in 3..<13 { probabilities[y * width + x] = 0.425 }
+        }
+
+        func count(for tier: OCRModelTier) -> Int {
+            TextDetectionPostProcess.boxes(
+                probabilities: probabilities, width: width, height: height,
+                validWidth: width, validHeight: height,
+                boxScoreThreshold: tier.correctedBoxScoreThreshold
+            ).count
+        }
+
+        XCTAssertEqual(count(for: .tiny), 1)
+        XCTAssertEqual(count(for: .small), 0)
+        XCTAssertEqual(count(for: .medium), 0)
     }
 }

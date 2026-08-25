@@ -139,20 +139,77 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         in image: CGImage,
         languages: [Language]
     ) async throws -> [RecognizedTextBlock] {
-        let canvas = OCRImageCanvas(image: image, side: OCRModelPack.detectorInputSize)
-        guard let canvas else { throw TextRecognitionError.recognitionFailed }
+        let lines = try await recognizeLines(in: image)
+        let blocks = TextBlockGrouping.group(lines: lines)
+        guard !blocks.isEmpty else { throw TextRecognitionError.noTextFound }
+        return blocks
+    }
 
+    /// 与正式识别共用的单行出口。真实图片 benchmark 需要在段落合并前把每个
+    /// detector 框与公开数据集的逐行标注匹配；这里不计分，只返回生产链路的原始行。
+    func recognizeLines(in image: CGImage) async throws -> [RecognizedTextBlock] {
+        let output = try await runPipeline(in: image)
+        guard !output.lines.isEmpty else { throw TextRecognitionError.noTextFound }
+        return output.lines
+    }
+
+    /// 评测和正式识别共用的唯一完整管线。检测框在识别失败时也保留，避免
+    /// recognizer 的空结果反过来污染 detector precision/recall。
+    struct PipelineOutput {
+        let detectionQuads: [TextQuad]
+        let lines: [RecognizedTextBlock]
+        /// 原始阶段耗时只供外部 benchmark 使用；这里不做阈值判断或 pass/fail。
+        let timingsMilliseconds: [String: Double]
+    }
+
+    func runPipeline(
+        in image: CGImage,
+        collectTimings: Bool = false,
+        recognizeText: Bool = true
+    ) async throws -> PipelineOutput {
+        var timings = PipelineTimings()
+        let preprocessingStarted = collectTimings ? Date() : nil
+        let canvas = OCRImageCanvas(image: image, side: model.detectorInputSize)
+        guard let canvas else { throw TextRecognitionError.recognitionFailed }
+        timings.preprocessing += Self.elapsedMilliseconds(since: preprocessingStarted)
+
+        let detectorStarted = collectTimings ? Date() : nil
         let boxes = try detect(canvas: canvas)
+        timings.detector += Self.elapsedMilliseconds(since: detectorStarted)
         try Task.checkCancellation()
-        guard !boxes.isEmpty else { throw TextRecognitionError.noTextFound }
+        let detectionQuads = boxes.compactMap {
+            TextDetectionPostProcess.quad(
+                from: $0.corners,
+                mapWidth: canvas.scaledWidth,
+                mapHeight: canvas.scaledHeight
+            )
+        }
+        if !recognizeText {
+            return PipelineOutput(
+                detectionQuads: detectionQuads,
+                lines: [],
+                timingsMilliseconds: [
+                    "preprocessing": timings.preprocessing,
+                    "detector": timings.detector,
+                    "recognizer": 0,
+                    "recognizerPerLine": 0,
+                    "decode": 0,
+                ]
+            )
+        }
 
         var lines: [RecognizedTextBlock] = []
         for box in boxes {
             try Task.checkCancellation()
+            let cropStarted = collectTimings ? Date() : nil
             // 三处用途，两个框。裁剪与**定位**用外扩框：DB 给的是文字区域的收缩
             // 多边形，拿它去裁会切掉首尾字母，拿它去贴译文只压得住字的中间一条。
             // 合并判据用紧框：外扩量随长宽比变化，会把行高比和行距都搅乱。
-            guard let crop = canvas.crop(box.corners),
+            guard let crop = canvas.crop(
+                    box.corners,
+                    outputHeight: model.recognizerInputHeight,
+                    outputWidth: model.recognizerInputWidth
+                  ),
                   let quad = TextDetectionPostProcess.quad(
                     from: box.corners,
                     mapWidth: canvas.scaledWidth, mapHeight: canvas.scaledHeight
@@ -163,7 +220,11 @@ final class PaddleTextRecognitionService: TextRecognitionService {
                   ) else {
                 continue
             }
-            let read = try recognize(crop: crop)
+            timings.preprocessing += Self.elapsedMilliseconds(since: cropStarted)
+            timings.recognizerAttempts += 1
+            let read = try recognize(
+                crop: crop, collectTimings: collectTimings, timings: &timings
+            )
             let text = read.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
             lines.append(RecognizedTextBlock(
@@ -173,21 +234,43 @@ final class PaddleTextRecognitionService: TextRecognitionService {
                 confidence: min(read.confidence, box.score)
             ))
         }
+        var raw = [
+            "preprocessing": timings.preprocessing,
+            "detector": timings.detector,
+            "recognizer": timings.recognizer,
+            "decode": timings.decode,
+        ]
+        raw["recognizerPerLine"] = timings.recognizer / Double(max(1, timings.recognizerAttempts))
+        return PipelineOutput(
+            detectionQuads: detectionQuads,
+            lines: lines,
+            timingsMilliseconds: raw
+        )
+    }
 
-        let blocks = TextBlockGrouping.group(lines: lines)
-        guard !blocks.isEmpty else { throw TextRecognitionError.noTextFound }
-        return blocks
+    private struct PipelineTimings {
+        var preprocessing = 0.0
+        var detector = 0.0
+        var recognizer = 0.0
+        var decode = 0.0
+        var recognizerAttempts = 0
+    }
+
+    private static func elapsedMilliseconds(since started: Date?) -> Double {
+        started.map { Date().timeIntervalSince($0) * 1000 } ?? 0
     }
 
     // MARK: - 检测
 
     private func detect(canvas: OCRImageCanvas) throws -> [TextDetectionPostProcess.RotatedBox] {
-        let side = OCRModelPack.detectorInputSize
+        let side = model.detectorInputSize
         let input = try MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)],
                                      dataType: .float32)
         input.withUnsafeMutableBytes { raw, _ in
             guard let base = raw.bindMemory(to: Float.self).baseAddress else { return }
-            canvas.fillDetectorInput(into: base)
+            canvas.fillDetectorInput(
+                into: base, mean: model.detectorMean, std: model.detectorStd
+            )
         }
 
         let provider = try MLDictionaryFeatureProvider(dictionary: ["x": MLFeatureValue(multiArray: input)])
@@ -204,15 +287,21 @@ final class PaddleTextRecognitionService: TextRecognitionService {
             probabilities: values, width: side, height: side,
             // letterbox 补出来的黑边不参与连通域分析，否则黑边会和画面边缘
             // 连成一个覆盖全图的巨框。
-            validWidth: canvas.scaledWidth, validHeight: canvas.scaledHeight
+            validWidth: canvas.scaledWidth, validHeight: canvas.scaledHeight,
+            boxScoreThreshold: model.boxScoreThreshold
         )
     }
 
     // MARK: - 识别
 
-    private func recognize(crop: OCRLineCrop) throws -> CTCDecoder.Result {
-        let height = OCRModelPack.recognizerInputHeight
-        let width = OCRModelPack.recognizerInputWidth
+    private func recognize(
+        crop: OCRLineCrop,
+        collectTimings: Bool,
+        timings: inout PipelineTimings
+    ) throws -> CTCDecoder.Result {
+        let preprocessingStarted = collectTimings ? Date() : nil
+        let height = model.recognizerInputHeight
+        let width = model.recognizerInputWidth
         let input = try MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)],
                                      dataType: .float32)
         input.withUnsafeMutableBytes { raw, _ in
@@ -223,7 +312,10 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         }
 
         let provider = try MLDictionaryFeatureProvider(dictionary: ["x": MLFeatureValue(multiArray: input)])
+        timings.preprocessing += Self.elapsedMilliseconds(since: preprocessingStarted)
+        let recognizerStarted = collectTimings ? Date() : nil
         let output = try loaded.recognizer.prediction(from: provider)
+        timings.recognizer += Self.elapsedMilliseconds(since: recognizerStarted)
         guard let name = loaded.recognizer.modelDescription.outputDescriptionsByName.keys.first,
               let logits = output.featureValue(for: name)?.multiArrayValue,
               logits.shape.count == 3 else {
@@ -236,6 +328,8 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         // 只解码有效宽度对应的时间步。补白区也会产出预测，一起解码会在行尾
         // 拖出一串重复字符。时间步与输入宽度成正比（模型内部固定下采样 8 倍）。
         let validSteps = min(max(1, Int((Double(steps) * Double(crop.usedWidth) / Double(width)).rounded())), steps)
+        let decodeStarted = collectTimings ? Date() : nil
+        defer { timings.decode += Self.elapsedMilliseconds(since: decodeStarted) }
 
         // 就地解码，不拷密集数组：这个张量是 1×80×18710，拷一份 5.99MB，
         // 而解码只做逐步 argmax。转换脚本把输出钉成 float32，真机实测的

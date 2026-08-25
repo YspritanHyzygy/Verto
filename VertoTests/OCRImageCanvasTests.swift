@@ -32,6 +32,41 @@ final class OCRImageCanvasTests: XCTestCase {
     private let canvasSide = 960
     private var scale: Double { Double(sourceWidth) / Double(canvasSide) }
 
+    // MARK: - 模型颜色契约
+
+    func testDetectorInputUsesTheV2RGBContract() throws {
+        let image = try makeImage { context in
+            context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            context.fill(CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight))
+        }
+        let canvas = try XCTUnwrap(OCRImageCanvas(image: image, side: 1))
+        var values = [Float](repeating: 0, count: 3)
+        values.withUnsafeMutableBufferPointer { destination in
+            canvas.fillDetectorInput(
+                into: destination.baseAddress!,
+                mean: OCRModelPack.correctedDetectorMean,
+                std: OCRModelPack.correctedDetectorStd
+            )
+        }
+
+        XCTAssertEqual(values[0], (1 - 0.406) / 0.225, accuracy: 0.001)
+        XCTAssertEqual(values[1], (0 - 0.456) / 0.224, accuracy: 0.001)
+        XCTAssertEqual(values[2], (0 - 0.485) / 0.229, accuracy: 0.001)
+    }
+
+    func testRecognizerInputKeepsRGBPlaneOrder() {
+        let crop = OCRLineCrop(
+            width: 1, height: 1, usedWidth: 1,
+            pixels: [255, 0, 0]
+        )
+        var values = [Float](repeating: 0, count: 3)
+        values.withUnsafeMutableBufferPointer { destination in
+            crop.fillRecognizerInput(into: destination.baseAddress!)
+        }
+
+        XCTAssertEqual(values, [1, -1, -1])
+    }
+
     // MARK: - 分辨率
 
     func testCropKeepsDetailThatTheDetectionCanvasWouldHaveAveragedAway() throws {

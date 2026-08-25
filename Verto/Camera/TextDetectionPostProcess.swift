@@ -32,9 +32,6 @@ import Foundation
 enum TextDetectionPostProcess {
     /// 概率图二值化阈值（`inference.yml` 的 thresh）。
     static let binarizationThreshold: Float = 0.2
-    /// 框内平均概率低于此值就丢弃（`inference.yml` 的 box_thresh）。
-    /// 纹理和反光会形成低置信度的连通块，靠它筛掉。
-    static let boxScoreThreshold: Float = 0.45
     /// 外扩比例（`inference.yml` 的 unclip_ratio）。DB 训练时标注框是被收缩过的，
     /// 推理时必须扩回去，否则每行文字的首尾字母会被切掉。
     static let unclipRatio: CGFloat = 1.4
@@ -83,7 +80,8 @@ enum TextDetectionPostProcess {
         width: Int,
         height: Int,
         validWidth: Int,
-        validHeight: Int
+        validHeight: Int,
+        boxScoreThreshold: Float
     ) -> [RotatedBox] {
         guard width > 0, height > 0, probabilities.count >= width * height else { return [] }
         let w = min(validWidth, width), h = min(validHeight, height)

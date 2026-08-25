@@ -86,16 +86,20 @@ struct OCRImageCanvas {
     ///
     /// 写成一次性填充而不是"逐像素回调"：这里有 92 万个像素，Debug 构建不做
     /// 内联，每像素一次闭包调用会把一次识别拖到几十秒——测试正是跑在 Debug 下的。
-    func fillDetectorInput(into destination: UnsafeMutablePointer<Float>) {
-        let mean = OCRModelPack.detectorMean, std = OCRModelPack.detectorStd
+    func fillDetectorInput(
+        into destination: UnsafeMutablePointer<Float>,
+        mean: [Float] = OCRModelPack.detectorMean,
+        std: [Float] = OCRModelPack.detectorStd
+    ) {
+        precondition(mean.count == 3 && std.count == 3)
         let plane = side * side
         pixels.withUnsafeBufferPointer { source in
             guard let base = source.baseAddress else { return }
             for index in 0..<plane {
                 let p = index * 4
-                destination[index] = (Float(base[p]) / 255 - mean.0) / std.0
-                destination[plane + index] = (Float(base[p + 1]) / 255 - mean.1) / std.1
-                destination[2 * plane + index] = (Float(base[p + 2]) / 255 - mean.2) / std.2
+                destination[index] = (Float(base[p]) / 255 - mean[0]) / std[0]
+                destination[plane + index] = (Float(base[p + 1]) / 255 - mean[1]) / std[1]
+                destination[2 * plane + index] = (Float(base[p + 2]) / 255 - mean[2]) / std[2]
             }
         }
     }
@@ -108,7 +112,11 @@ struct OCRImageCanvas {
     /// 用直接双线性采样而不是 CGContext 变换：这里同时涉及旋转、缩放和
     /// y 轴方向，用仿射矩阵叠出来极易在某一处符号弄反，而采样式写法把
     /// "目标像素来自源图哪一点"写成一行，对错一眼可见。
-    func crop(_ corners: [CGPoint]) -> OCRLineCrop? {
+    func crop(
+        _ corners: [CGPoint],
+        outputHeight: Int = OCRModelPack.recognizerInputHeight,
+        outputWidth: Int = OCRModelPack.recognizerInputWidth
+    ) -> OCRLineCrop? {
         guard corners.count == 4 else { return nil }
         // 画布坐标 → 原图坐标。两者都是原点左上、y 向下，所以只是一次缩放，不翻 y。
         let scaled = corners.map {
@@ -119,8 +127,9 @@ struct OCRImageCanvas {
         let boxHeight = hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y)
         guard boxWidth > 1, boxHeight > 1 else { return nil }
 
-        let outHeight = OCRModelPack.recognizerInputHeight
-        let maxWidth = OCRModelPack.recognizerInputWidth
+        let outHeight = outputHeight
+        let maxWidth = outputWidth
+        guard outHeight > 0, maxWidth > 0 else { return nil }
         // 等比映射到 48 高；比 640 还宽的行按比例压进来（宁可压扁也别切断，
         // 切断会整段丢字，压扁只是稍微降低置信度）。
         // 长宽比与尺度无关，所以这里换到原图坐标算出来的值和换之前一样。
