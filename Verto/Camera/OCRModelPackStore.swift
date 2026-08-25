@@ -28,6 +28,36 @@ struct InstalledOCRModel: Equatable, Sendable {
     let detectorURL: URL
     let recognizerURL: URL
     let charactersURL: URL
+    let detectorInputSize: Int
+    let recognizerInputHeight: Int
+    let recognizerInputWidth: Int
+    let detectorMean: [Float]
+    let detectorStd: [Float]
+    let boxScoreThreshold: Float
+
+    init(
+        tier: OCRModelTier,
+        detectorURL: URL,
+        recognizerURL: URL,
+        charactersURL: URL,
+        detectorInputSize: Int = OCRModelPack.detectorInputSize,
+        recognizerInputHeight: Int = OCRModelPack.recognizerInputHeight,
+        recognizerInputWidth: Int = OCRModelPack.recognizerInputWidth,
+        detectorMean: [Float] = OCRModelPack.detectorMean,
+        detectorStd: [Float] = OCRModelPack.detectorStd,
+        boxScoreThreshold: Float? = nil
+    ) {
+        self.tier = tier
+        self.detectorURL = detectorURL
+        self.recognizerURL = recognizerURL
+        self.charactersURL = charactersURL
+        self.detectorInputSize = detectorInputSize
+        self.recognizerInputHeight = recognizerInputHeight
+        self.recognizerInputWidth = recognizerInputWidth
+        self.detectorMean = detectorMean
+        self.detectorStd = detectorStd
+        self.boxScoreThreshold = boxScoreThreshold ?? tier.boxScoreThreshold
+    }
 }
 
 enum OCRModelInstallError: LocalizedError, Equatable {
@@ -134,9 +164,7 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
         try await download(tier, to: archive, onProgress: onProgress)
         try Task.checkCancellation()
 
-        guard try checksum(of: archive) == tier.sha256 else {
-            throw OCRModelInstallError.checksumMismatch
-        }
+        try Self.verifyChecksum(of: archive, expected: tier.sha256)
 
         let unpacked = scratch.appendingPathComponent("unpacked")
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
@@ -212,7 +240,13 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
     // MARK: - 校验
 
     /// 流式算 SHA-256。整包读进内存再算会在 medium 档（47MB）上无谓地翻倍占用。
-    private func checksum(of url: URL) throws -> String {
+    static func verifyChecksum(of url: URL, expected: String) throws {
+        guard try checksum(of: url) == expected else {
+            throw OCRModelInstallError.checksumMismatch
+        }
+    }
+
+    private static func checksum(of url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var hasher = SHA256()
@@ -294,15 +328,95 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
             values.isExcludedFromBackup = true
             try? staged.setResourceValues(values)
 
-            try? fm.removeItem(at: root)
-            try fm.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try fm.moveItem(at: staging, to: root)
+            // 激活前就把模型真正加载一次，并用零张量跑通。仅检查文件存在会把
+            // 损坏字表、错误输出形状或 Core ML 能编译却不能执行的包放进正式目录。
+            try Self.validateStaged(target)
+            try Self.activate(staging: staging, at: root)
         } catch {
             try? fm.removeItem(at: staging)
             throw OCRModelInstallError.compilationFailed
         }
 
         guard let model = installed(tier) else { throw OCRModelInstallError.compilationFailed }
+        if let obsolete = try OCRModelPack.obsoleteV1InstallDirectory(for: tier),
+           fm.fileExists(atPath: obsolete.path) {
+            // v1 只在 v2 完整激活并能重新加载之后才删。前面任一步失败都会保留
+            // 旧目录，catalog 因拿不到 v2 而自然继续走 Vision。
+            try? fm.removeItem(at: obsolete)
+        }
         return model
+    }
+
+    /// 同目录替换保证 `installed()` 只会看到完整旧版或完整新版。这个小函数
+    /// 单独开放给文件系统单测；实际安装仍只有上面这一条路径。
+    static func activate(staging: URL, at root: URL) throws {
+        let fm = FileManager.default
+        let parent = root.deletingLastPathComponent()
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        guard fm.fileExists(atPath: root.path) else {
+            try fm.moveItem(at: staging, to: root)
+            return
+        }
+
+        let backupName = "\(root.lastPathComponent).previous-\(UUID().uuidString)"
+        _ = try fm.replaceItemAt(
+            root, withItemAt: staging, backupItemName: backupName,
+            options: [.usingNewMetadataOnly]
+        )
+        try? fm.removeItem(at: parent.appendingPathComponent(backupName))
+    }
+
+    private static func validateStaged(_ model: InstalledOCRModel) throws {
+        let configuration = MLModelConfiguration()
+        configuration.computeUnits = .all
+        let detector = try MLModel(contentsOf: model.detectorURL, configuration: configuration)
+        let recognizer = try MLModel(contentsOf: model.recognizerURL, configuration: configuration)
+        let characters = try OCRCharacterSet(contentsOf: model.charactersURL)
+
+        let detectorOutput = try zeroPrediction(
+            model: detector,
+            expectedInputShape: [1, 3, model.detectorInputSize, model.detectorInputSize]
+        )
+        guard detectorOutput.shape.map(\.intValue)
+                == [1, 1, model.detectorInputSize, model.detectorInputSize] else {
+            throw OCRModelInstallError.compilationFailed
+        }
+
+        let recognizerOutput = try zeroPrediction(
+            model: recognizer,
+            expectedInputShape: [1, 3, model.recognizerInputHeight, model.recognizerInputWidth]
+        )
+        let recognizerShape = recognizerOutput.shape.map(\.intValue)
+        guard recognizerShape.count == 3,
+              recognizerShape[0] == 1,
+              recognizerShape[1] == model.recognizerInputWidth / 8,
+              recognizerShape[2] == characters.expectedClassCount else {
+            throw OCRModelInstallError.compilationFailed
+        }
+    }
+
+    private static func zeroPrediction(
+        model: MLModel,
+        expectedInputShape: [Int]
+    ) throws -> MLMultiArray {
+        guard let input = model.modelDescription.inputDescriptionsByName.first,
+              input.value.multiArrayConstraint?.shape.map(\.intValue) == expectedInputShape,
+              input.value.multiArrayConstraint?.dataType == .float32,
+              let output = model.modelDescription.outputDescriptionsByName.first,
+              output.value.multiArrayConstraint?.dataType == .float32 else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        let zero = try MLMultiArray(
+            shape: expectedInputShape.map { NSNumber(value: $0) }, dataType: .float32
+        )
+        let provider = try MLDictionaryFeatureProvider(
+            dictionary: [input.key: MLFeatureValue(multiArray: zero)]
+        )
+        let prediction = try model.prediction(from: provider)
+        guard let values = prediction.featureValue(for: output.key)?.multiArrayValue,
+              try PaddleTextRecognitionService.denseFloats(from: values).allSatisfy(\.isFinite) else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        return values
     }
 }

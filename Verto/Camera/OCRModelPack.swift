@@ -18,8 +18,8 @@ import Foundation
 
 /// 高精度识别引擎的模型档位。
 ///
-/// 三档都是 PP-OCRv6（转成 Core ML fp16），差别只在模型大小。前后处理超参
-/// 三档共用，构建源见
+/// 三档都是 PP-OCRv6（转成 Core ML fp16）。识别覆盖和 detector 的框分数阈值
+/// 属于具体档位，不能拿一档的配置套给另外两档。构建源见
 /// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/scripts/build_models.py`。
 /// 模型不进 app bundle，
 /// 用户在设置里选档下载，也可以删掉退回系统引擎。
@@ -77,6 +77,19 @@ enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
 
     var archiveURL: URL { OCRModelPack.releaseBaseURL.appendingPathComponent(archiveName) }
 
+    /// 各 detector 自带 `inference.yml` 的 `box_thresh`。tiny 为了保住弱文字
+    /// 使用 0.40；small/medium 使用 0.45。这个差异属于模型契约，不是 UI 调参。
+    var boxScoreThreshold: Float {
+        OCRModelPack.version == "2" ? correctedBoxScoreThreshold : 0.45
+    }
+
+    var correctedBoxScoreThreshold: Float {
+        switch self {
+        case .tiny: 0.40
+        case .small, .medium: 0.45
+        }
+    }
+
     /// 本档识别模型是否覆盖某种语言的文字。
     ///
     /// **PP-OCRv6 三档全部没有谚文**（字表里谚文音节与谚文字母都是 0 条），
@@ -121,10 +134,16 @@ enum OCRModelPack {
     static let recognizerInputHeight = 48
     static let recognizerInputWidth = 640
 
-    /// 检测预处理：ImageNet 均值方差。识别预处理：(x - 0.5) / 0.5。
-    /// 两者都照搬 PaddleOCR 官方配置，改一个数就会让准确率断崖下跌。
-    static let detectorMean: (Float, Float, Float) = (0.485, 0.456, 0.406)
-    static let detectorStd: (Float, Float, Float) = (0.229, 0.224, 0.225)
+    /// v2 模型在第一层权重里把 Paddle 的 BGR 输入折叠为 Apple 侧 RGB 输入。
+    /// 所以这里按 RGB 顺序使用上游 BGR 配置的反序均值方差；运行时不再额外换通道。
+    static var detectorMean: [Float] {
+        version == "2" ? correctedDetectorMean : [0.485, 0.456, 0.406]
+    }
+    static var detectorStd: [Float] {
+        version == "2" ? correctedDetectorStd : [0.229, 0.224, 0.225]
+    }
+    static let correctedDetectorMean: [Float] = [0.406, 0.456, 0.485]
+    static let correctedDetectorStd: [Float] = [0.225, 0.224, 0.229]
     static let recognizerMean: Float = 0.5
     static let recognizerStd: Float = 0.5
 
@@ -139,6 +158,17 @@ enum OCRModelPack {
         return base
             .appendingPathComponent("OCRModels", isDirectory: true)
             .appendingPathComponent("v\(version)", isDirectory: true)
+            .appendingPathComponent(tier.rawValue, isDirectory: true)
+    }
+
+    /// v2 成功激活后的单次清理目标。这里只知道旧目录位置，不读取或运行旧模型，
+    /// 因此不会在新代码里偷偷维护第二套 v1 推理契约。
+    static func obsoleteV1InstallDirectory(for tier: OCRModelTier) throws -> URL? {
+        guard version == "2" else { return nil }
+        return try installDirectory(for: tier)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("v1", isDirectory: true)
             .appendingPathComponent(tier.rawValue, isDirectory: true)
     }
 }

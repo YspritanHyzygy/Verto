@@ -37,6 +37,8 @@ final class OCRModelPackMetadataTests: XCTestCase {
         ]
 
         XCTAssertEqual(OCRModelPack.version, "1")
+        XCTAssertEqual(OCRModelPack.detectorMean, [0.485, 0.456, 0.406])
+        XCTAssertTrue(OCRModelTier.allCases.allSatisfy { $0.boxScoreThreshold == 0.45 })
         for tier in OCRModelTier.allCases {
             let contract = try XCTUnwrap(expected[tier])
             XCTAssertEqual(tier.archiveName, contract.name)
@@ -54,6 +56,47 @@ final class OCRModelPackMetadataTests: XCTestCase {
         XCTAssertTrue(directory.path.hasSuffix("/OCRModels/v1/small"))
         XCTAssertFalse(directory.path.contains("pp-ocr-v6-coreml"))
     }
+
+    func testArchiveChecksumRejectsCorruption() throws {
+        let archive = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ocr-checksum-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: archive) }
+        try Data("abc".utf8).write(to: archive)
+
+        XCTAssertNoThrow(try OCRModelPackInstaller.verifyChecksum(
+            of: archive,
+            expected: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        ))
+        XCTAssertThrowsError(try OCRModelPackInstaller.verifyChecksum(
+            of: archive, expected: String(repeating: "0", count: 64)
+        )) { error in
+            XCTAssertEqual(error as? OCRModelInstallError, .checksumMismatch)
+        }
+    }
+
+    func testActivationReplacesACompleteDirectoryAsOneUnit() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ocr-activation-\(UUID().uuidString)", isDirectory: true)
+        let installed = parent.appendingPathComponent("small", isDirectory: true)
+        let staging = parent.appendingPathComponent("small.staging", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        try FileManager.default.createDirectory(at: installed, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: installed.appendingPathComponent("marker"))
+        try Data("new".utf8).write(to: staging.appendingPathComponent("marker"))
+
+        try OCRModelPackInstaller.activate(staging: staging, at: installed)
+
+        XCTAssertEqual(
+            try String(contentsOf: installed.appendingPathComponent("marker"), encoding: .utf8),
+            "new"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    func testV1CodeDoesNotDeleteItsOwnInstallDirectory() throws {
+        XCTAssertNil(try OCRModelPack.obsoleteV1InstallDirectory(for: .small))
+    }
 }
 
 /// 诊断探针：拿**真实的** Core ML 模型端到端跑一遍高精度识别管线。
@@ -64,12 +107,63 @@ final class OCRModelPackMetadataTests: XCTestCase {
 ///
 /// 模型不在仓库里（14MB~47MB，由 PP-OCR-for-Apple Release 分发），所以用环境变量指路：
 ///     VERTO_OCR_MODEL_DIR=/private/tmp/pp-ocr-for-apple/out/small
+///     VERTO_OCR_MODEL_TIER=small
 /// 没设就跳过并说明原因，不伪装成通过。
 final class PaddleOCRProbeTests: XCTestCase {
     /// 探针图上的原文，由测试自己画上去，不是 app 里的演示数据。
     private static let lines = ["欢迎光临", "营业时间 09:00-21:00", "禁止吸烟"]
 
     private static let reportPath = "/private/tmp/paddle-ocr-probe.txt"
+
+    private struct Corpus: Decodable {
+        let schemaVersion: Int
+        let samples: [CorpusSample]
+    }
+
+    private struct CorpusSample: Decodable {
+        let id: String
+        let dataset: String
+        let language: String
+        let scenario: String
+        let evaluationTask: String?
+        let imagePath: String
+        let groundTruth: [CorpusLine]
+    }
+
+    private struct CorpusLine: Codable {
+        let polygon: [[Double]]
+        let text: String
+        let ignore: Bool?
+    }
+
+    private struct OutputSample: Encodable {
+        let id: String
+        let dataset: String
+        let language: String
+        let scenario: String
+        let evaluationTask: String?
+        let groundTruth: [CorpusLine]
+        let detectionPredictions: [CorpusLine]
+        let predictions: [CorpusLine]
+        let timingsMilliseconds: [String: Double]
+    }
+
+    private struct BenchmarkReport: Encodable {
+        struct Run: Encodable {
+            let tier: String
+            let device: String
+            let systemVersion: String
+            let operatingSystem: String
+            let computeUnits: String
+            let warmupRuns: Int
+            let coldCompileMilliseconds: Double
+            let coldLoadMilliseconds: Double
+        }
+
+        let schemaVersion: Int
+        let run: Run
+        let samples: [OutputSample]
+    }
 
     func testProbePaddleRecognitionPipeline() async throws {
         guard let directory = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_DIR"] else {
@@ -79,7 +173,8 @@ final class PaddleOCRProbeTests: XCTestCase {
                 """)
         }
         let root = URL(fileURLWithPath: directory)
-        var report: [String] = ["MODEL_DIR: \(directory)"]
+        let tier = try Self.modelTier()
+        var report: [String] = ["MODEL_DIR: \(directory)", "MODEL_TIER: \(tier.rawValue)"]
         // 每一步都先落盘再往下走：探针的价值一半在于失败时告诉你卡在哪，
         // 只在成功路径末尾写报告的话，一旦中途抛错就什么线索都没有。
         defer { Self.write(report) }
@@ -92,7 +187,7 @@ final class PaddleOCRProbeTests: XCTestCase {
 
         let model: InstalledOCRModel
         do {
-            model = try await Self.compile(from: root)
+            model = try await Self.compile(from: root, tier: tier)
         } catch {
             report.append("compileModel 抛错: \(error)")
             throw error
@@ -151,6 +246,99 @@ final class PaddleOCRProbeTests: XCTestCase {
         }
     }
 
+    /// 用真实生产链路输出公开评测器需要的原始行、框和耗时。这里不做匹配、CER、
+    /// bootstrap 或 pass/fail 判定；分数统一由 PP-OCR-for-Apple 的评测脚本计算。
+    func testBenchmarkExternalCorpus() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let modelDirectory = environment["VERTO_OCR_MODEL_DIR"],
+              let corpusPath = environment["VERTO_OCR_CORPUS_JSON"],
+              let outputPath = environment["VERTO_OCR_REPORT_PATH"] else {
+            throw XCTSkip("未同时设置模型目录、语料 JSON 和原始报告路径，跳过真实语料 benchmark")
+        }
+
+        let tier = try Self.modelTier()
+        let corpusURL = URL(fileURLWithPath: corpusPath)
+        let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: corpusURL))
+        XCTAssertEqual(corpus.schemaVersion, 1)
+        XCTAssertFalse(corpus.samples.isEmpty)
+
+        let compileStarted = Date()
+        let model = try await Self.compile(
+            from: URL(fileURLWithPath: modelDirectory), tier: tier
+        )
+        let coldCompileMilliseconds = Date().timeIntervalSince(compileStarted) * 1000
+        let loadStarted = Date()
+        let service = try PaddleTextRecognitionService(model: model)
+        let coldLoadMilliseconds = Date().timeIntervalSince(loadStarted) * 1000
+        let resolved = try corpus.samples.map { sample -> (CorpusSample, CGImage) in
+            let language = try XCTUnwrap(
+                Language.all.first { $0.code == sample.language },
+                "语料包含 Verto 不认识的语言代码：\(sample.language)"
+            )
+            XCTAssertTrue(
+                tier.recognizes(language),
+                "\(tier.rawValue) 不覆盖 \(sample.language)，不能把 Vision 回退混进模型 benchmark"
+            )
+            return (sample, try Self.loadImage(sample.imagePath, relativeTo: corpusURL))
+        }
+
+        let warmupRuns = Int(environment["VERTO_OCR_WARMUP_RUNS"] ?? "3") ?? 3
+        if let first = resolved.first {
+            for _ in 0..<max(0, warmupRuns) {
+                _ = try? await service.recognizeLines(in: first.1)
+            }
+        }
+
+        var outputs: [OutputSample] = []
+        for (sample, image) in resolved {
+            let started = Date()
+            let pipeline = try await service.runPipeline(
+                in: image,
+                collectTimings: true,
+                recognizeText: sample.evaluationTask != "detection"
+            )
+            let elapsed = Date().timeIntervalSince(started) * 1000
+            var timings = pipeline.timingsMilliseconds
+            timings["endToEnd"] = elapsed
+            outputs.append(OutputSample(
+                id: sample.id,
+                dataset: sample.dataset,
+                language: sample.language,
+                scenario: sample.scenario,
+                evaluationTask: sample.evaluationTask,
+                groundTruth: sample.groundTruth,
+                detectionPredictions: pipeline.detectionQuads.map {
+                    Self.corpusLine(from: $0, text: "", image: image)
+                },
+                predictions: pipeline.lines.map { Self.corpusLine(from: $0, image: image) },
+                timingsMilliseconds: timings
+            ))
+        }
+
+        let device = await MainActor.run {
+            (model: UIDevice.current.model, systemVersion: UIDevice.current.systemVersion)
+        }
+        let report = BenchmarkReport(
+            schemaVersion: 1,
+            run: .init(
+                tier: tier.rawValue,
+                device: device.model,
+                systemVersion: device.systemVersion,
+                operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
+                computeUnits: "ALL",
+                warmupRuns: max(0, warmupRuns),
+                coldCompileMilliseconds: coldCompileMilliseconds,
+                coldLoadMilliseconds: coldLoadMilliseconds
+            ),
+            samples: outputs
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(report).write(
+            to: URL(fileURLWithPath: outputPath), options: .atomic
+        )
+    }
+
     /// 韩语没有谚文字表，必须仍然由系统引擎接管，不能悄悄用高精度模型识别成乱码。
     func testKoreanIsRoutedToSystemEngineOnEveryTier() throws {
         let korean = try XCTUnwrap(Language.all.first { $0.code == "ko" })
@@ -204,16 +392,72 @@ final class PaddleOCRProbeTests: XCTestCase {
 
     // MARK: - 辅助
 
-    private static func compile(from root: URL) async throws -> InstalledOCRModel {
+    private static func modelTier() throws -> OCRModelTier {
+        let value = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_TIER"] ?? "small"
+        return try XCTUnwrap(OCRModelTier(rawValue: value), "无效的 VERTO_OCR_MODEL_TIER：\(value)")
+    }
+
+    private static func compile(from root: URL, tier: OCRModelTier) async throws -> InstalledOCRModel {
+        let environment = ProcessInfo.processInfo.environment
+        let detectorSize = Int(environment["VERTO_OCR_DETECTOR_SIZE"] ?? "")
+            ?? OCRModelPack.detectorInputSize
+        let recognizerWidth = Int(environment["VERTO_OCR_RECOGNIZER_WIDTH"] ?? "")
+            ?? OCRModelPack.recognizerInputWidth
+        let usesB0ColorContract = environment["VERTO_OCR_B0_COLOR_CONTRACT"] == "1"
+        let threshold = Float(environment["VERTO_OCR_BOX_SCORE_THRESHOLD"] ?? "")
         let detector = try await MLModel.compileModel(
             at: root.appendingPathComponent(OCRModelPack.detectorFileName))
         let recognizer = try await MLModel.compileModel(
             at: root.appendingPathComponent(OCRModelPack.recognizerFileName))
         return InstalledOCRModel(
-            tier: .small,
+            tier: tier,
             detectorURL: detector,
             recognizerURL: recognizer,
-            charactersURL: root.appendingPathComponent(OCRModelPack.charactersFileName)
+            charactersURL: root.appendingPathComponent(OCRModelPack.charactersFileName),
+            detectorInputSize: detectorSize,
+            recognizerInputWidth: recognizerWidth,
+            detectorMean: usesB0ColorContract
+                ? [0.485, 0.456, 0.406] : OCRModelPack.correctedDetectorMean,
+            detectorStd: usesB0ColorContract
+                ? [0.229, 0.224, 0.225] : OCRModelPack.correctedDetectorStd,
+            boxScoreThreshold: threshold
+                ?? (usesB0ColorContract ? 0.45 : tier.correctedBoxScoreThreshold)
+        )
+    }
+
+    private static func loadImage(_ path: String, relativeTo corpusURL: URL) throws -> CGImage {
+        let resolved = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : corpusURL.deletingLastPathComponent().appendingPathComponent(path)
+        let image = try XCTUnwrap(UIImage(contentsOfFile: resolved.path), "读不到语料图片：\(resolved.path)")
+        return try XCTUnwrap(image.normalizedUp().cgImage, "语料图片无法转成 CGImage：\(resolved.path)")
+    }
+
+    private static func corpusLine(
+        from block: RecognizedTextBlock,
+        image: CGImage
+    ) -> CorpusLine {
+        corpusLine(from: block.quad, text: block.text, image: image)
+    }
+
+    private static func corpusLine(
+        from quad: TextQuad,
+        text: String,
+        image: CGImage
+    ) -> CorpusLine {
+        func pixel(_ point: CGPoint) -> [Double] {
+            [Double(point.x) * Double(image.width),
+             (1 - Double(point.y)) * Double(image.height)]
+        }
+        return CorpusLine(
+            polygon: [
+                pixel(quad.topLeft),
+                pixel(quad.topRight),
+                pixel(quad.bottomRight),
+                pixel(quad.bottomLeft),
+            ],
+            text: text,
+            ignore: nil
         )
     }
 
