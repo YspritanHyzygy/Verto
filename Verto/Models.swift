@@ -70,7 +70,7 @@ enum SheetDestination: Identifiable {
     }
 }
 
-struct Language: Identifiable, Equatable, Hashable {
+struct Language: Identifiable, Equatable, Hashable, Sendable {
     let code: String
     let nativeName: String
     /// 按当前界面语言显示的注解名（如英文界面下的 "English (US)" 之于 "英语"）。

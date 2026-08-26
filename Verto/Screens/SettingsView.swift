@@ -20,8 +20,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var settings: AppSettings
     private let relayConfigured = TranslationRelayConfiguration.fromBundle() != nil
-    /// 高精度识别模型的安装状态。为 nil 时整节不显示——UI 测试的罐头相机路径
-    /// 不接这一路，没有可管理的模型。
+    /// 只供 OCR Test 构建显示人工覆盖项；生产设置页不会读取它。
     var ocrModelCatalog: OCRModelCatalog?
 
     var body: some View {
@@ -29,9 +28,9 @@ struct SettingsView: View {
             header
             Form {
                 engineSection
-                if let ocrModelCatalog {
-                    OCRModelSection(catalog: ocrModelCatalog)
-                }
+#if OCR_TEST_BUILD
+                if let ocrModelCatalog { OCRModelSection(catalog: ocrModelCatalog) }
+#endif
                 voicePlaybackSection
                 preferenceSection
                 appearanceSection

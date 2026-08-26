@@ -85,22 +85,28 @@ struct AppShell: View {
             // 快门 → 叠加译文的全流程因此能在模拟器上真跑。
             captureSource = CannedPhotoCaptureSource()
             recognizer = CannedTextRecognitionService()
+#if OCR_TEST_BUILD
+            // OCR Test 的 UI 测试仍要看真实路由状态和设置控件，但罐头拍照链不能
+            // 被它接管，否则测试会下载模型并把合成识别变成另一条真实管线。
+            catalog = Self.makeModelCatalog()
+#endif
         } else {
             captureSource = CameraCaptureSource()
             recognizer = VisionTextRecognitionService()
-            catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
+            catalog = Self.makeModelCatalog()
         }
 #else
         captureSource = CameraCaptureSource()
         recognizer = VisionTextRecognitionService()
-        catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
+        catalog = Self.makeModelCatalog()
 #endif
+        let controllerCatalog = configuration.useCannedCamera ? nil : catalog
         _modelCatalog = State(initialValue: catalog)
         _photoController = State(initialValue: PhotoTranslationController(
             settings: settings,
             captureSource: captureSource,
             recognizer: recognizer,
-            modelCatalog: catalog,
+            modelCatalog: controllerCatalog,
             translationService: configuration.useCannedTranslation ? CannedTranslationService() : nil,
             synthesizer: voiceSynthesizer
         ))
@@ -142,8 +148,7 @@ struct AppShell: View {
                 controller: photoController,
                 session: session,
                 settings: settings,
-                onSwapLanguages: swapLanguages,
-                ocrModelCatalog: modelCatalog
+                onSwapLanguages: swapLanguages
             )
             .tabItem {
                 Label(AppMode.camera.title, systemImage: AppMode.camera.systemImage)
@@ -177,20 +182,36 @@ struct AppShell: View {
         .onChange(of: session.targetLanguage) { _, newValue in
             settings.lastTargetLanguageCode = newValue.code
         }
+        .task {
+            // 首次启动就后台顺序准备本机两档；不再等用户先打开相机页。
+            modelCatalog?.prepareAutomaticModelsIfNeeded()
+        }
 #if DEBUG
-        // UI 测试的固定演示数据必须一眼可辨，避免误当成真实翻译/真实识别。
+        // 两个诊断徽章共用一个顶部横排；窄屏下各自 overlay 会互相压住。
         .overlay(alignment: .top) {
-            if usesDemoData {
-                Text("演示译文模式 · 未连接翻译服务")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.72), in: Capsule())
-                    .padding(.top, 2)
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("canned-translation-badge")
+            HStack(spacing: 6) {
+                if usesDemoData {
+                    Text("演示译文模式 · 未连接翻译服务")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.72), in: Capsule())
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("canned-translation-badge")
+                }
+#if OCR_TEST_BUILD
+                if let modelCatalog {
+                    Spacer(minLength: 6)
+                    OCRTestBadge(
+                        catalog: modelCatalog,
+                        sourceLanguage: session.sourceLanguage
+                    )
+                }
+#endif
             }
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
         }
 #endif
     }
@@ -255,7 +276,57 @@ struct AppShell: View {
             for: nil
         )
     }
+
+    private static func makeModelCatalog() -> OCRModelCatalog {
+#if OCR_TEST_BUILD
+        OCRModelCatalog(installer: OCRModelPackInstaller(), testDefaults: .standard)
+#else
+        OCRModelCatalog(installer: OCRModelPackInstaller())
+#endif
+    }
 }
+
+#if OCR_TEST_BUILD
+private struct OCRTestBadge: View {
+    let catalog: OCRModelCatalog
+    let sourceLanguage: Language
+
+    private var text: String {
+        let language = sourceLanguage.isAuto ? nil : sourceLanguage
+        switch catalog.effectiveEngine(for: language) {
+        case .model(let tier):
+            if catalog.testSelection == .automatic {
+                return String(
+                    format: String(localized: "OCR 测试 · 自动→%@"),
+                    tier.displayName
+                )
+            }
+            return String(format: String(localized: "OCR 测试 · %@"), tier.displayName)
+        case .vision:
+            if let tier = catalog.preferredModelTier,
+               catalog.state(of: tier).isBusy {
+                return String(
+                    format: String(localized: "OCR 测试 · Vision（%@下载中）"),
+                    tier.displayName
+                )
+            }
+            return String(localized: "OCR 测试 · Vision")
+        }
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(.black.opacity(0.72), in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityLabel(text)
+            .accessibilityIdentifier("ocr-test-badge")
+    }
+}
+#endif
 
 #Preview {
     AppShell()

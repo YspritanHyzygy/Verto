@@ -17,33 +17,38 @@
 import CoreGraphics
 import Foundation
 
-/// 在高精度引擎与系统引擎之间按语言分流。
+/// 在有序的 PP-OCR 候选链与系统引擎之间按语言分流。
 ///
 /// 存在的理由是一条硬事实：**PP-OCRv6 三档全部不含谚文**，tiny 档还另外缺日文假名
 /// （见 `OCRModelTier.recognizes(_:)`）。整体换掉系统引擎会让韩语识别直接归零，
 /// 所以搞不定的语言必须原样交回给 Vision。
 ///
-/// 另外两种回落情形：用户没装任何模型；模型装了但加载失败（文件损坏）。
-/// 三种情形都不该让相机页报错——降级到系统引擎仍然能用，只是准确率回到从前。
 struct RoutingTextRecognitionService: TextRecognitionService {
-    private let highAccuracy: TextRecognitionService?
-    private let tier: OCRModelTier?
+    struct ModelCandidate: Sendable {
+        let tier: OCRModelTier
+        let service: any TextRecognitionService
+    }
+
+    private let models: [ModelCandidate]
     private let system: TextRecognitionService
+    private let languageScout: any ImageLanguageScouting
+    private let onModelFailure: @Sendable (OCRModelTier) -> Void
 
     init(
-        highAccuracy: TextRecognitionService?,
-        tier: OCRModelTier?,
-        system: TextRecognitionService = VisionTextRecognitionService()
+        models: [ModelCandidate],
+        system: TextRecognitionService = VisionTextRecognitionService(),
+        languageScout: any ImageLanguageScouting = VisionImageLanguageScout(),
+        onModelFailure: @escaping @Sendable (OCRModelTier) -> Void = { _ in }
     ) {
-        self.highAccuracy = highAccuracy
-        self.tier = tier
+        self.models = models
         self.system = system
+        self.languageScout = languageScout
+        self.onModelFailure = onModelFailure
     }
 
     /// 给定的识别语言能否全部由高精度模型覆盖。
     ///
-    /// 语言列表为空表示自动检测——那时画面里可能是任何文字，包括谚文，
-    /// 所以不能赌，交给系统引擎（它的自动检测覆盖面更广）。
+    /// 语言列表为空表示尚未侦察，不能直接声称模型可用。
     static func canUseHighAccuracy(tier: OCRModelTier?, languages: [Language]) -> Bool {
         guard let tier else { return false }
         let requested = languages.filter { !$0.isAuto }
@@ -55,21 +60,55 @@ struct RoutingTextRecognitionService: TextRecognitionService {
         in image: CGImage,
         languages: [Language]
     ) async throws -> [RecognizedTextBlock] {
-        guard let highAccuracy,
-              Self.canUseHighAccuracy(tier: tier, languages: languages) else {
-            return try await system.recognizeText(in: image, languages: languages)
+        let requested = languages.filter { !$0.isAuto }
+        if !requested.isEmpty {
+            let supported = models.filter { candidate in
+                requested.allSatisfy(candidate.tier.recognizes)
+            }
+            return try await recognize(
+                in: image,
+                modelLanguages: requested,
+                systemLanguages: languages,
+                candidates: supported
+            )
         }
-        do {
-            return try await highAccuracy.recognizeText(in: image, languages: languages)
-        } catch let error as TextRecognitionError where error == .noTextFound {
-            // 「没找到文字」是结论不是故障，直接上报；再跑一遍系统引擎只会
-            // 让用户多等一秒还是同样的结果。
-            throw error
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // 模型跑挂了（文件损坏、内存不足等）不该让整次拍照白费，退回系统引擎。
-            return try await system.recognizeText(in: image, languages: languages)
+
+        switch await languageScout.decideEngine(for: image) {
+        case .vision:
+            return try await system.recognizeText(in: image, languages: [])
+        case .model(let detectedLanguage):
+            let supported = models.filter { $0.tier.recognizes(detectedLanguage) }
+            return try await recognize(
+                in: image,
+                modelLanguages: [detectedLanguage],
+                systemLanguages: [],
+                candidates: supported
+            )
         }
+    }
+
+    private func recognize(
+        in image: CGImage,
+        modelLanguages: [Language],
+        systemLanguages: [Language],
+        candidates: [ModelCandidate]
+    ) async throws -> [RecognizedTextBlock] {
+        for candidate in candidates {
+            do {
+                return try await candidate.service.recognizeText(
+                    in: image,
+                    languages: modelLanguages
+                )
+            } catch let error as TextRecognitionError where error == .noTextFound {
+                // 「没找到文字」是有效结论，不是拿备用模型再赌一遍的故障。
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // 当前会话不再使用这个模型；下一档仍能接手当前照片。
+                onModelFailure(candidate.tier)
+            }
+        }
+        return try await system.recognizeText(in: image, languages: systemLanguages)
     }
 }

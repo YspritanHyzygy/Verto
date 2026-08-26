@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "OCR 测试 · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OCR Test · %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba OCR · %@" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OCR テスト · %@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OCR 테스트 · %@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "OCR 测试 · %@" } }
+      }
+    },
+    "OCR 测试 · Vision" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OCR Test · Vision" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba OCR · Vision" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OCR テスト · Vision" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OCR 테스트 · Vision" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "OCR 测试 · Vision" } }
+      }
+    },
+    "OCR 测试 · Vision（%@下载中）" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OCR Test · Vision (%@ downloading)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba OCR · Vision (descargando %@)" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OCR テスト · Vision（%@をダウンロード中）" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OCR 테스트 · Vision(%@ 다운로드 중)" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "OCR 测试 · Vision（%@下载中）" } }
+      }
+    },
+    "OCR 测试 · 自动→%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OCR Test · Auto→%@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba OCR · Automático→%@" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OCR テスト · 自動→%@" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "OCR 테스트 · 자동→%@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "OCR 测试 · 自动→%@" } }
+      }
+    },
+    "始终使用系统文字识别" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Always use system text recognition" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Usar siempre el reconocimiento de texto del sistema" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "常にシステムの文字認識を使用" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "항상 시스템 텍스트 인식 사용" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "始终使用系统文字识别" } }
+      }
+    },
+    "按设备和语言使用生产路由" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Use production routing for this device and language" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Usar la ruta de producción para este dispositivo e idioma" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "端末と言語に応じた本番ルートを使用" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "기기와 언어에 맞는 프로덕션 경로 사용" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "按设备和语言使用生产路由" } }
+      }
+    },
+    "自动" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatic" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Automático" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "自動" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "자동" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动" } }
+      }
+    },
     "“%@” 的自然译文" : {
       "extractionState" : "manual",
       "localizations" : {

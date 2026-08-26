@@ -23,9 +23,6 @@ struct CameraTranslateView: View {
     let session: TranslationSession
     let settings: AppSettings
     let onSwapLanguages: () -> Void
-    /// 高精度识别模型的安装状态。为 nil 表示这一路不启用（罐头相机路径）。
-    var ocrModelCatalog: OCRModelCatalog?
-
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedBlock: BlockSelection?
@@ -63,9 +60,6 @@ struct CameraTranslateView: View {
         .toast($toastText, topPadding: 70, identifier: "camera.toast")
         .task {
             controller.setLanguages(source: session.sourceLanguage, target: session.targetLanguage)
-            // 首次进相机页顺带拉高精度识别模型。放在 start() 之前发起：它是后台任务，
-            // 不阻塞取景；没下完的这段时间照常用系统引擎识别，下完自动切过去。
-            ocrModelCatalog?.autoInstallDefaultIfNeeded()
             await controller.start()
         }
         .onChange(of: "\(session.sourceLanguage.code)>\(session.targetLanguage.code)") {

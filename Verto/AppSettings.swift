@@ -76,8 +76,6 @@ final class AppSettings {
     private static let voicePlaybackKey = "settings.voicePlaybackMode"
     private static let sourceLanguageKey = "settings.lastSourceLanguageCode"
     private static let targetLanguageKey = "settings.lastTargetLanguageCode"
-    private static let ocrTierKey = "settings.ocrModelTier"
-    private static let ocrAutoDownloadKey = "settings.allowsAutomaticOCRModelDownload"
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -105,22 +103,11 @@ final class AppSettings {
         didSet { persist(lastTargetLanguageCode, forKey: Self.targetLanguageKey) }
     }
 
-    /// 拍照识别用哪一档模型。选中不等于已安装，见 `OCRModelCatalog`。
-    var ocrModelTier: OCRModelTier {
-        didSet { defaults.set(ocrModelTier.rawValue, forKey: Self.ocrTierKey) }
-    }
-
-    /// 首次进入相机页时是否允许自动下载默认档。用户手动删掉模型后关掉它，
-    /// 就不会在下次进相机页时又被塞回来。
-    var allowsAutomaticOCRModelDownload: Bool {
-        didSet { defaults.set(allowsAutomaticOCRModelDownload, forKey: Self.ocrAutoDownloadKey) }
-    }
-
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--uitest-reset-settings") {
-            [Self.engineKey, Self.appearanceKey, Self.autoSpeakKey, Self.voicePlaybackKey, Self.sourceLanguageKey, Self.targetLanguageKey, Self.ocrTierKey, Self.ocrAutoDownloadKey]
+            [Self.engineKey, Self.appearanceKey, Self.autoSpeakKey, Self.voicePlaybackKey, Self.sourceLanguageKey, Self.targetLanguageKey]
                 .forEach(defaults.removeObject(forKey:))
         }
 #endif
@@ -133,12 +120,6 @@ final class AppSettings {
             .flatMap(AppearanceMode.init(rawValue:)) ?? .system
         lastSourceLanguageCode = defaults.string(forKey: Self.sourceLanguageKey)
         lastTargetLanguageCode = defaults.string(forKey: Self.targetLanguageKey)
-        ocrModelTier = defaults.string(forKey: Self.ocrTierKey)
-            .flatMap(OCRModelTier.init(rawValue:)) ?? .default
-        // 没写过这个键时默认允许——首次进相机页自动下载是既定行为，
-        // `bool(forKey:)` 对缺失键返回 false，不能直接用。
-        allowsAutomaticOCRModelDownload =
-            defaults.object(forKey: Self.ocrAutoDownloadKey) as? Bool ?? true
     }
 
     var storedSourceLanguage: Language? {

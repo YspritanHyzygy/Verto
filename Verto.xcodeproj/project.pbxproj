@@ -45,6 +45,7 @@
 		01A000000000000000000509 /* OCRModelPack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000409 /* OCRModelPack.swift */; };
 		01A000000000000000000510 /* OCRModelPackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000410 /* OCRModelPackStore.swift */; };
 		01A000000000000000000511 /* OCRModelCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000411 /* OCRModelCatalog.swift */; };
+		01A000000000000000000516 /* OCRRoutingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000416 /* OCRRoutingPolicy.swift */; };
 		01A000000000000000000512 /* OCRImageCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000412 /* OCRImageCanvas.swift */; };
 		01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000413 /* PaddleTextRecognitionService.swift */; };
 		01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000414 /* RoutingTextRecognitionService.swift */; };
@@ -66,6 +67,7 @@
 		01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000014 /* OCRImageCanvasTests.swift */; };
 		01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000015 /* TextDetectionPostProcessTests.swift */; };
 		01C000000000000000000115 /* CTCDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000016 /* CTCDecoderTests.swift */; };
+		01C000000000000000000116 /* OCRRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000017 /* OCRRoutingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,6 +128,7 @@
 		01A000000000000000000409 /* OCRModelPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelPack.swift; sourceTree = "<group>"; };
 		01A000000000000000000410 /* OCRModelPackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelPackStore.swift; sourceTree = "<group>"; };
 		01A000000000000000000411 /* OCRModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRModelCatalog.swift; sourceTree = "<group>"; };
+		01A000000000000000000416 /* OCRRoutingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRoutingPolicy.swift; sourceTree = "<group>"; };
 		01A000000000000000000412 /* OCRImageCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvas.swift; sourceTree = "<group>"; };
 		01A000000000000000000413 /* PaddleTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleTextRecognitionService.swift; sourceTree = "<group>"; };
 		01A000000000000000000414 /* RoutingTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingTextRecognitionService.swift; sourceTree = "<group>"; };
@@ -148,6 +151,7 @@
 		01C000000000000000000014 /* OCRImageCanvasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvasTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000015 /* TextDetectionPostProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDetectionPostProcessTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000016 /* CTCDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTCDecoderTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000017 /* OCRRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRRoutingTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000011 /* VertoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -259,6 +263,7 @@
 				01A000000000000000000409 /* OCRModelPack.swift */,
 				01A000000000000000000410 /* OCRModelPackStore.swift */,
 				01A000000000000000000411 /* OCRModelCatalog.swift */,
+				01A000000000000000000416 /* OCRRoutingPolicy.swift */,
 				01A000000000000000000412 /* OCRImageCanvas.swift */,
 				01A000000000000000000413 /* PaddleTextRecognitionService.swift */,
 				01A000000000000000000414 /* RoutingTextRecognitionService.swift */,
@@ -297,6 +302,7 @@
 				01C000000000000000000014 /* OCRImageCanvasTests.swift */,
 				01C000000000000000000015 /* TextDetectionPostProcessTests.swift */,
 				01C000000000000000000016 /* CTCDecoderTests.swift */,
+				01C000000000000000000017 /* OCRRoutingTests.swift */,
 			);
 			path = VertoTests;
 			sourceTree = "<group>";
@@ -471,6 +477,7 @@
 				01A000000000000000000509 /* OCRModelPack.swift in Sources */,
 				01A000000000000000000510 /* OCRModelPackStore.swift in Sources */,
 				01A000000000000000000511 /* OCRModelCatalog.swift in Sources */,
+				01A000000000000000000516 /* OCRRoutingPolicy.swift in Sources */,
 				01A000000000000000000512 /* OCRImageCanvas.swift in Sources */,
 				01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */,
 				01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */,
@@ -506,6 +513,7 @@
 				01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */,
 				01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */,
 				01C000000000000000000115 /* CTCDecoderTests.swift in Sources */,
+				01C000000000000000000116 /* OCRRoutingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -586,6 +594,68 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
+		};
+		01A000000000000000000089 /* OCR Test */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG OCR_TEST_BUILD $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = "OCR Test";
 		};
 		01A000000000000000000081 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -681,6 +751,46 @@
 			};
 			name = Debug;
 		};
+		01A000000000000000000086 /* OCR Test */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 01A000000000000000000085 /* Secrets.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = Z42T9RCB38;
+				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = InfoPlist.xcstrings;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Verto/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Verto OCR Test";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍照翻译需要使用相机拍摄画面里的文字，用于识别并翻译。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "对话翻译需要使用麦克风录制你的语音，用于实时语音识别与翻译。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要语音识别权限把你的语音转成文字后翻译；iOS 26 及以上识别在你的设备上完成。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yspritan.verto.ocrtest;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = "OCR Test";
+		};
 		01A000000000000000000083 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 01A000000000000000000085 /* Secrets.xcconfig */;
@@ -746,6 +856,32 @@
 			};
 			name = Debug;
 		};
+		01B000000000000000000084 /* OCR Test */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yspritan.verto.ocrtest.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Verto;
+			};
+			name = "OCR Test";
+		};
 		01B000000000000000000083 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -799,6 +935,33 @@
 			};
 			name = Debug;
 		};
+		01C000000000000000000084 /* OCR Test */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yspritan.verto.ocrtest.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Verto.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Verto";
+			};
+			name = "OCR Test";
+		};
 		01C000000000000000000083 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -833,6 +996,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				01A000000000000000000082 /* Debug */,
+				01A000000000000000000086 /* OCR Test */,
 				01A000000000000000000083 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -842,6 +1006,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				01A000000000000000000080 /* Debug */,
+				01A000000000000000000089 /* OCR Test */,
 				01A000000000000000000081 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -851,6 +1016,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				01B000000000000000000082 /* Debug */,
+				01B000000000000000000084 /* OCR Test */,
 				01B000000000000000000083 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -860,6 +1026,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				01C000000000000000000082 /* Debug */,
+				01C000000000000000000084 /* OCR Test */,
 				01C000000000000000000083 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;

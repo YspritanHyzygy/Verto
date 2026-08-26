@@ -17,7 +17,7 @@
 import Foundation
 import Observation
 
-/// 三档模型的安装状态机，设置页与相机页共用一份。
+/// 三档模型共用的安装状态机，也是设备路由读取的唯一模型健康状态。
 ///
 /// 由 `AppShell` 持有：下载可能跨越标签页切换，状态挂在页面上会被销毁。
 @Observable
@@ -42,26 +42,47 @@ final class OCRModelCatalog {
 
     private(set) var states: [OCRModelTier: State] = [:]
 
-    /// 用户选中的档位。选中不等于已安装——选了才会去下。
-    private(set) var selectedTier: OCRModelTier
+    enum EffectiveEngine: Equatable {
+        case model(OCRModelTier)
+        case vision
+    }
 
-    /// 当前真正能用的模型。相机页据此决定走高精度引擎还是系统引擎。
-    private(set) var activeModel: InstalledOCRModel?
+    private static let testSelectionKey = "ocrTest.selection"
+    private(set) var testSelection: OCRTestSelection
 
     private let installer: OCRModelPackInstalling
-    private let settings: AppSettings
-    /// 每档一个在飞任务，重复点下载不会并发起两份。
-    private var tasks: [OCRModelTier: Task<Void, Never>] = [:]
-    /// 首次自动下载只触发一次，来回切标签页不会反复起任务。
-    private var didAutoInstall = false
-    /// 已加载的高精度识别器。Core ML 编译产物在旧机器上要几百毫秒才加载得完，
-    /// 每次快门都重建会让每张照片都慢一拍，所以按 activeModel 缓存。
-    private var cachedRecognizer: (model: InstalledOCRModel, service: PaddleTextRecognitionService)?
+    let policy: OCRRoutingPolicy
+    /// 只有 OCR Test 构建传入。生产为 nil，因此没有人工覆盖入口。
+    @ObservationIgnored private let testDefaults: UserDefaults?
+    @ObservationIgnored private let modelHealthCheck: @Sendable (InstalledOCRModel) async -> Bool
+    /// 每档一个在飞任务，重复触发不会并发下载两份。
+    private var tasks: [OCRModelTier: Task<Bool, Never>] = [:]
+    private var preparationTask: Task<Void, Never>?
+    /// 加载或推理失败后，本次 App 会话不再反复撞同一坏模型。
+    private var unhealthyTiers: Set<OCRModelTier> = []
+    private var cachedRecognizers: [OCRModelTier: (
+        model: InstalledOCRModel,
+        service: PaddleTextRecognitionService
+    )] = [:]
 
-    init(installer: OCRModelPackInstalling, settings: AppSettings) {
+    init(
+        installer: OCRModelPackInstalling,
+        policy: OCRRoutingPolicy = OCRRoutingPolicy(
+            machineIdentifier: OCRHardwareIdentifier.current()
+        ),
+        testDefaults: UserDefaults? = nil,
+        modelHealthCheck: @escaping @Sendable (InstalledOCRModel) async -> Bool = { model in
+            await Task.detached {
+                (try? PaddleTextRecognitionService(model: model)) != nil
+            }.value
+        }
+    ) {
         self.installer = installer
-        self.settings = settings
-        selectedTier = settings.ocrModelTier
+        self.policy = policy
+        self.testDefaults = testDefaults
+        self.modelHealthCheck = modelHealthCheck
+        testSelection = testDefaults?.string(forKey: Self.testSelectionKey)
+            .flatMap(OCRTestSelection.init(rawValue:)) ?? .automatic
         refreshInstalledStates()
     }
 
@@ -71,7 +92,6 @@ final class OCRModelCatalog {
         for tier in OCRModelTier.allCases where !(states[tier]?.isBusy ?? false) {
             states[tier] = installer.installed(tier) == nil ? .notInstalled : .installed
         }
-        activeModel = installer.installed(selectedTier)
     }
 
     func state(of tier: OCRModelTier) -> State { states[tier] ?? .notInstalled }
@@ -87,93 +107,181 @@ final class OCRModelCatalog {
         OCRModelTier.allCases.contains { installer.installed($0) != nil }
     }
 
-    // MARK: - 用户操作
+    var routedModelTiers: [OCRModelTier] {
+        policy.candidates(for: nil, testSelection: testSelection).compactMap { candidate in
+            guard case .model(let tier) = candidate else { return nil }
+            return tier
+        }
+    }
 
-    func select(_ tier: OCRModelTier) {
-        selectedTier = tier
-        settings.ocrModelTier = tier
-        activeModel = installer.installed(tier)
-        if activeModel == nil, !state(of: tier).isBusy {
+    /// App 根视图每次冷启动调用一次。主档结束后才开始备用档，避免两个
+    /// Core ML 包同时抢网络、磁盘和编译资源；相机不会等待这个任务。
+    @discardableResult
+    func prepareAutomaticModelsIfNeeded() -> Task<Void, Never>? {
+        if let preparationTask { return preparationTask }
+        let tiers = routedModelTiers
+        preparationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            for tier in tiers where self.installer.installed(tier) == nil {
+                _ = await self.startInstall(tier).value
+            }
+
+            // OCR Test 要保留三档供人工来回测，不能套生产清理策略。
+            guard self.testDefaults == nil else { return }
+            var allRoutedModelsAreHealthy = true
+            for tier in tiers {
+                guard let model = self.installer.installed(tier),
+                      await self.modelHealthCheck(model) else {
+                    self.unhealthyTiers.insert(tier)
+                    allRoutedModelsAreHealthy = false
+                    continue
+                }
+                self.unhealthyTiers.remove(tier)
+            }
+            // 先确认两档都完整且能加载，再清掉不属于本机链的旧包。否则一次
+            // 损坏下载会同时拿走用户原来还能测试/回退的模型。
+            if tiers.isEmpty || allRoutedModelsAreHealthy {
+                self.removeModels(outside: Set(tiers))
+            }
+        }
+        return preparationTask
+    }
+
+    // MARK: - OCR Test 操作
+
+    func selectTestEngine(_ selection: OCRTestSelection) {
+        guard testDefaults != nil else { return }
+        testSelection = selection
+        testDefaults?.set(selection.rawValue, forKey: Self.testSelectionKey)
+        if let tier = selection.tier, installer.installed(tier) == nil {
             install(tier)
+        } else if selection == .automatic {
+            preparationTask?.cancel()
+            preparationTask = nil
+            prepareAutomaticModelsIfNeeded()
         }
     }
 
     func install(_ tier: OCRModelTier) {
-        guard !(states[tier]?.isBusy ?? false) else { return }
-        states[tier] = .downloading(0)
-        tasks[tier]?.cancel()
-        // 全程强持有 self：catalog 由 AppShell 持有、与 app 同寿，而下载中途
-        // 把它放掉只会让状态永远停在"下载中"。这里没有循环引用风险——
-        // 任务结束时会把自己从 tasks 里摘掉。
-        tasks[tier] = Task { [installer] in
-            do {
-                let model = try await installer.install(tier) { progress in
-                    Task { @MainActor in self.apply(progress: progress, to: tier) }
-                }
-                await MainActor.run {
-                    self.states[tier] = .installed
-                    if tier == self.selectedTier { self.activeModel = model }
-                }
-            } catch is CancellationError {
-                await MainActor.run { self.states[tier] = .notInstalled }
-            } catch {
-                await MainActor.run {
-                    self.states[tier] = .failed((error as? OCRModelInstallError) ?? .network)
-                }
-            }
-            await MainActor.run { self.tasks[tier] = nil }
-        }
-    }
-
-    /// 只在仍处于下载态时写进度：安装/失败/取消之后到达的回调是过期的，
-    /// 写回去会让状态倒退。
-    private func apply(progress: Double, to tier: OCRModelTier) {
-        guard case .downloading = states[tier] else { return }
-        // 进度到 1 表示字节收齐，后面是校验/解包/编译。那一段没有可靠进度
-        // （Core ML 编译不报进度），所以换成独立的忙态，免得进度条停在
-        // 100% 让人以为卡死。
-        states[tier] = progress >= 1 ? .installing : .downloading(progress)
+        _ = startInstall(tier)
     }
 
     func cancel(_ tier: OCRModelTier) {
         tasks[tier]?.cancel()
         tasks[tier] = nil
-        states[tier] = .notInstalled
+        states[tier] = installer.installed(tier) == nil ? .notInstalled : .installed
     }
 
     func delete(_ tier: OCRModelTier) {
         cancel(tier)
-        // 必须连缓存一起丢：重装同一档后 URL 完全相同，`InstalledOCRModel`
-        // 因此判等成立，缓存会被误认为仍然有效——而它持有的 MLModel 指向的是
-        // 已被删掉的那份文件。
-        if cachedRecognizer?.model.tier == tier { cachedRecognizer = nil }
+        cachedRecognizers[tier] = nil
+        unhealthyTiers.remove(tier)
         try? installer.remove(tier)
         refreshInstalledStates()
     }
 
-    /// 组装当前该用的识别器。
-    ///
-    /// 没装模型、加载失败、以及模型盖不住的语言，一律回落到 `system`——
-    /// 高精度识别是增强不是前提，任何一环缺失都不该让相机页不能用。
-    func makeRecognizer(system: any TextRecognitionService) -> any TextRecognitionService {
-        guard let activeModel else { return system }
-        if cachedRecognizer?.model != activeModel {
-            cachedRecognizer = (try? PaddleTextRecognitionService(model: activeModel))
-                .map { (activeModel, $0) }
+    // MARK: - 路由
+
+    func effectiveEngine(for language: Language?) -> EffectiveEngine {
+        for candidate in policy.candidates(for: language, testSelection: testSelection) {
+            switch candidate {
+            case .model(let tier):
+                if installer.installed(tier) != nil, !unhealthyTiers.contains(tier) {
+                    return .model(tier)
+                }
+            case .vision:
+                return .vision
+            }
         }
+        return .vision
+    }
+
+    var preferredModelTier: OCRModelTier? { routedModelTiers.first }
+
+    /// 加载失败会立即剔除；推理失败由路由器回报后也会在本次会话里剔除。
+    func makeRecognizer(system: any TextRecognitionService) -> any TextRecognitionService {
+        var candidates: [RoutingTextRecognitionService.ModelCandidate] = []
+        for tier in routedModelTiers where !unhealthyTiers.contains(tier) {
+            guard let model = installer.installed(tier) else { continue }
+            if cachedRecognizers[tier]?.model != model {
+                do {
+                    cachedRecognizers[tier] = (
+                        model,
+                        try PaddleTextRecognitionService(model: model)
+                    )
+                } catch {
+                    unhealthyTiers.insert(tier)
+                    continue
+                }
+            }
+            if let service = cachedRecognizers[tier]?.service {
+                candidates.append(.init(tier: tier, service: service))
+            }
+        }
+        guard !candidates.isEmpty else { return system }
+
         return RoutingTextRecognitionService(
-            highAccuracy: cachedRecognizer?.service,
-            tier: activeModel.tier,
-            system: system
+            models: candidates,
+            system: system,
+            onModelFailure: { [weak self] tier in
+                Task { @MainActor in self?.markUnhealthy(tier) }
+            }
         )
     }
 
-    /// 首次进入相机页时触发默认档下载。用户没装过任何档才下——
-    /// 已经装过又主动删掉的人，不该被再塞回来一次。
-    func autoInstallDefaultIfNeeded() {
-        guard !didAutoInstall else { return }
-        didAutoInstall = true
-        guard !hasAnyInstalledModel, settings.allowsAutomaticOCRModelDownload else { return }
-        select(.default)
+    private func markUnhealthy(_ tier: OCRModelTier) {
+        unhealthyTiers.insert(tier)
+        cachedRecognizers[tier] = nil
+    }
+
+    // MARK: - 安装细节
+
+    private func startInstall(_ tier: OCRModelTier) -> Task<Bool, Never> {
+        if let existing = tasks[tier] { return existing }
+        if installer.installed(tier) != nil {
+            states[tier] = .installed
+            return Task { true }
+        }
+
+        states[tier] = .downloading(0)
+        let task = Task { @MainActor [weak self, installer] in
+            guard let self else { return false }
+            let succeeded: Bool
+            do {
+                _ = try await installer.install(tier) { [weak self] progress in
+                    Task { @MainActor [weak self] in self?.apply(progress: progress, to: tier) }
+                }
+                self.states[tier] = .installed
+                self.unhealthyTiers.remove(tier)
+                succeeded = true
+            } catch is CancellationError {
+                self.states[tier] = installer.installed(tier) == nil ? .notInstalled : .installed
+                succeeded = false
+            } catch {
+                self.states[tier] = .failed(
+                    (error as? OCRModelInstallError) ?? .network
+                )
+                succeeded = false
+            }
+            self.tasks[tier] = nil
+            return succeeded
+        }
+        tasks[tier] = task
+        return task
+    }
+
+    private func apply(progress: Double, to tier: OCRModelTier) {
+        guard case .downloading = states[tier] else { return }
+        states[tier] = progress >= 1 ? .installing : .downloading(progress)
+    }
+
+    private func removeModels(outside retained: Set<OCRModelTier>) {
+        for tier in OCRModelTier.allCases where !retained.contains(tier) {
+            guard installer.installed(tier) != nil else { continue }
+            cachedRecognizers[tier] = nil
+            unhealthyTiers.remove(tier)
+            try? installer.remove(tier)
+        }
+        refreshInstalledStates()
     }
 }

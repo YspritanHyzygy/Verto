@@ -21,8 +21,7 @@ import Foundation
 /// 三档都是 PP-OCRv6（转成 Core ML fp16）。识别覆盖和 detector 的框分数阈值
 /// 属于具体档位，不能拿一档的配置套给另外两档。构建源见
 /// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/scripts/build_models.py`。
-/// 模型不进 app bundle，
-/// 用户在设置里选档下载，也可以删掉退回系统引擎。
+/// 模型不进 app bundle；生产版按设备自动下载并路由，OCR Test 构建才允许人工覆盖。
 enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
     case tiny
     case small
@@ -30,8 +29,7 @@ enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// 默认档。首次进相机页自动下载的就是它：12MB 的下载量能接受，
-    /// 准确率 81.3 已经明显超过系统引擎，而 medium 要 44MB 只多 1.9 分。
+    /// 只供旧调用点和文档表示均衡档；生产首选由 `OCRRoutingPolicy` 决定。
     static let `default`: OCRModelTier = .small
 
     var displayName: String {

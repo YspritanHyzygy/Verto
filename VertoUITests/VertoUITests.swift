@@ -1047,6 +1047,43 @@ final class VertoUITests: XCTestCase {
         }
     }
 
+#if OCR_TEST_BUILD
+    @MainActor
+    func testOCRTestBuildShowsEffectiveBadgeAndFiveOverrides() throws {
+        let app = launchApp(mode: "text")
+        dismissSystemPermissionAlertIfPresent()
+        let badge = element("ocr-test-badge", in: app)
+
+        XCTAssertTrue(badge.waitForExistence(timeout: 3))
+        XCTAssertTrue(badge.label.hasPrefix("OCR 测试 · "))
+        captureScreenshot(named: "ocr-test-effective-engine-badge", of: app)
+
+        let settingsButton = element("settings-button", in: app)
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 2))
+        settingsButton.tap()
+        let form = element("settings.form", in: app)
+        XCTAssertTrue(form.waitForExistence(timeout: 3))
+
+        for identifier in ["automatic", "vision", "tiny", "small", "medium"] {
+            let row = element("settings.ocrModel.\(identifier)", in: app)
+            for _ in 0..<5 where !row.exists {
+                dragUp(in: form, byFractionOfHeight: 1.0 / 4.0)
+            }
+            XCTAssertTrue(row.waitForExistence(timeout: 2), "缺少 OCR Test 覆盖项 \(identifier)")
+        }
+        captureScreenshot(named: "ocr-test-model-controls", of: app)
+    }
+#else
+    @MainActor
+    func testProductionBuildDoesNotExposeOCRTestControls() throws {
+        let app = launchApp(mode: "text", sheet: "settings")
+        XCTAssertFalse(element("ocr-test-badge", in: app).exists)
+        for identifier in ["automatic", "vision", "tiny", "small", "medium"] {
+            XCTAssertFalse(element("settings.ocrModel.\(identifier)", in: app).exists)
+        }
+    }
+#endif
+
     @MainActor
     private func launchApp(
         mode: String,
@@ -1054,19 +1091,21 @@ final class VertoUITests: XCTestCase {
         reduceMotion: Bool = false,
         language: String = "zh-Hans",
         locale: String = "zh_Hans_CN",
-        resetSettings: Bool = true
+        resetSettings: Bool = true,
+        cannedCamera: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
             "-AppleLanguages", "(\(language))",
             "-AppleLocale", locale,
             "--uitest-mode", mode,
-            // 固定演示译文/脚本化语音/合成拍照与识别，
-            // UI 测试不碰真实网络、麦克风、TTS 与相机。
+            // 固定演示译文和脚本化语音；多数测试再接合成拍照与识别。
             "--uitest-canned-translation",
-            "--uitest-canned-speech",
-            "--uitest-canned-camera"
+            "--uitest-canned-speech"
         ]
+        if cannedCamera {
+            app.launchArguments.append("--uitest-canned-camera")
+        }
         if resetSettings {
             app.launchArguments.append("--uitest-reset-settings")
         }
@@ -1087,6 +1126,14 @@ final class VertoUITests: XCTestCase {
     @MainActor
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
+    }
+
+    @MainActor
+    private func dismissSystemPermissionAlertIfPresent() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
+        guard alert.waitForExistence(timeout: 2) else { return }
+        alert.buttons.firstMatch.tap()
     }
 
     @MainActor

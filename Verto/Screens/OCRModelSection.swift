@@ -16,15 +16,16 @@
 
 import SwiftUI
 
-/// 设置页里的「文字识别」一节：三档模型的选择、下载、删除。
+#if OCR_TEST_BUILD
+/// OCR Test 专用的人工覆盖入口；生产构建里这个类型根本不参与编译。
 struct OCRModelSection: View {
     let catalog: OCRModelCatalog
 
     var body: some View {
         Section {
-            ForEach(OCRModelTier.allCases) { tier in
-                row(for: tier)
-                    .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue)")
+            ForEach(OCRTestSelection.allCases) { selection in
+                row(for: selection)
+                    .accessibilityIdentifier("settings.ocrModel.\(selection.rawValue)")
             }
         } header: {
             SectionLabel(text: "文字识别")
@@ -33,96 +34,106 @@ struct OCRModelSection: View {
         }
     }
 
-    private func row(for tier: OCRModelTier) -> some View {
-        let state = catalog.state(of: tier)
-        let isSelected = catalog.selectedTier == tier
+    private func row(for selection: OCRTestSelection) -> some View {
+        let state = selection.tier.map(catalog.state) ?? .notInstalled
+        let isSelected = catalog.testSelection == selection
         return Button {
-            catalog.select(tier)
+            catalog.selectTestEngine(selection)
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(tier.displayName)
+                        Text(selection.displayName)
                             .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
                             .foregroundStyle(AppTheme.ink)
-                        if tier == .default {
-                            Text("默认")
-                                .font(.system(size: 11, weight: .medium))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AppTheme.terracottaSoft, in: Capsule())
-                                .foregroundStyle(AppTheme.terracotta)
-                        }
                     }
-                    Text(subtitle(for: tier, state: state))
+                    Text(subtitle(for: selection, state: state))
                         .font(.system(size: 13))
                         .foregroundStyle(AppTheme.secondaryInk)
                 }
                 Spacer(minLength: 8)
-                trailing(for: tier, state: state, isSelected: isSelected)
+                trailing(for: selection, state: state, isSelected: isSelected)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    private func subtitle(for tier: OCRModelTier, state: OCRModelCatalog.State) -> String {
+    private func subtitle(
+        for selection: OCRTestSelection,
+        state: OCRModelCatalog.State
+    ) -> String {
+        guard let tier = selection.tier else {
+            switch selection {
+            case .automatic: return String(localized: "按设备和语言使用生产路由")
+            case .vision: return String(localized: "始终使用系统文字识别")
+            case .tiny, .small, .medium: return ""
+            }
+        }
         switch state {
         case .downloading(let progress):
-            String(localized: "正在下载 \(Int(progress * 100))%")
+            return String(localized: "正在下载 \(Int(progress * 100))%")
         case .installing:
-            String(localized: "正在安装")
+            return String(localized: "正在安装")
         case .failed(let error):
-            error.errorDescription ?? String(localized: "模型安装失败，请重新下载")
+            return error.errorDescription ?? String(localized: "模型安装失败，请重新下载")
         case .installed:
-            String(localized: "已下载 \(Self.megabytes(tier.downloadBytes)) · 准确率 \(Self.score(tier.accuracy))")
+            return String(localized: "已下载 \(Self.megabytes(tier.downloadBytes)) · 准确率 \(Self.score(tier.accuracy))")
         case .notInstalled:
-            String(localized: "需下载 \(Self.megabytes(tier.downloadBytes)) · 准确率 \(Self.score(tier.accuracy))")
+            return String(localized: "需下载 \(Self.megabytes(tier.downloadBytes)) · 准确率 \(Self.score(tier.accuracy))")
         }
     }
 
     @ViewBuilder
     private func trailing(
-        for tier: OCRModelTier, state: OCRModelCatalog.State, isSelected: Bool
+        for selection: OCRTestSelection,
+        state: OCRModelCatalog.State,
+        isSelected: Bool
     ) -> some View {
-        switch state {
-        case .downloading(let progress):
-            HStack(spacing: 10) {
-                ProgressView(value: progress)
-                    .progressViewStyle(.circular)
-                    .controlSize(.small)
-                Button {
-                    catalog.cancel(tier)
-                } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(AppTheme.secondaryInk)
+        if let tier = selection.tier {
+            switch state {
+            case .downloading(let progress):
+                HStack(spacing: 10) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                    Button {
+                        catalog.cancel(tier)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(AppTheme.secondaryInk)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("取消下载")
+                    .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue).cancel")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("取消下载")
-                .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue).cancel")
+            case .installing:
+                ProgressView().progressViewStyle(.circular).controlSize(.small)
+            case .installed:
+                HStack(spacing: 12) {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AppTheme.terracotta)
+                    }
+                    Button {
+                        catalog.delete(tier)
+                    } label: {
+                        Image(systemName: "trash").foregroundStyle(AppTheme.secondaryInk)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("删除模型")
+                    .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue).delete")
+                }
+            case .notInstalled, .failed:
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(AppTheme.terracotta)
+                    .accessibilityLabel("下载模型")
             }
-        case .installing:
-            ProgressView().progressViewStyle(.circular).controlSize(.small)
-        case .installed:
-            HStack(spacing: 12) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AppTheme.terracotta)
-                }
-                Button {
-                    catalog.delete(tier)
-                } label: {
-                    Image(systemName: "trash").foregroundStyle(AppTheme.secondaryInk)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("删除模型")
-                .accessibilityIdentifier("settings.ocrModel.\(tier.rawValue).delete")
-            }
-        case .notInstalled, .failed:
-            Image(systemName: "arrow.down.circle")
-                .font(.system(size: 18))
+        } else if isSelected {
+            Image(systemName: "checkmark")
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppTheme.terracotta)
-                .accessibilityLabel("下载模型")
         }
     }
 
@@ -131,7 +142,7 @@ struct OCRModelSection: View {
             Text("未安装模型时使用系统文字识别。韩语始终使用系统文字识别。")
                 .font(.system(size: 12))
                 .foregroundStyle(AppTheme.secondaryInk)
-            if catalog.selectedTier == .tiny {
+            if catalog.testSelection == .tiny {
                 Text("轻量模型不含日文假名，日语使用系统文字识别。")
                     .font(.system(size: 12))
                     .foregroundStyle(AppTheme.secondaryInk)
@@ -151,3 +162,4 @@ struct OCRModelSection: View {
         String(format: "%.1f", value)
     }
 }
+#endif
