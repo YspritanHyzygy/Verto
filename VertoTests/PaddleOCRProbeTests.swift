@@ -319,22 +319,30 @@ final class PaddleOCRProbeTests: XCTestCase {
     /// bootstrap 或 pass/fail 判定；分数统一由 PP-OCR-for-Apple 的评测脚本计算。
     func testBenchmarkExternalCorpus() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard let modelDirectory = environment["VERTO_OCR_MODEL_DIR"],
-              let corpusPath = environment["VERTO_OCR_CORPUS_JSON"],
-              let outputPath = environment["VERTO_OCR_REPORT_PATH"] else {
-            throw XCTSkip("未同时设置模型目录、语料 JSON 和原始报告路径，跳过真实语料 benchmark")
+        guard let modelDirectory = Self.benchmarkURL(
+                environment: environment,
+                absoluteKey: "VERTO_OCR_MODEL_DIR",
+                bundledKey: "VERTO_OCR_BUNDLED_MODEL_PATH"
+              ),
+              let corpusURL = Self.benchmarkURL(
+                environment: environment,
+                absoluteKey: "VERTO_OCR_CORPUS_JSON",
+                bundledKey: "VERTO_OCR_BUNDLED_CORPUS_PATH"
+              ),
+              environment["VERTO_OCR_REPORT_PATH"] != nil
+                || environment["VERTO_OCR_REPORT_ATTACHMENT_NAME"] != nil else {
+            throw XCTSkip("未同时设置模型、语料和原始报告出口，跳过真实语料 benchmark")
         }
 
         let tier = try Self.modelTier()
         let computeUnits = try Self.computeUnits()
-        let corpusURL = URL(fileURLWithPath: corpusPath)
         let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: corpusURL))
         XCTAssertEqual(corpus.schemaVersion, 1)
         XCTAssertFalse(corpus.samples.isEmpty)
 
         let compileStarted = Date()
         let model = try await Self.compile(
-            from: URL(fileURLWithPath: modelDirectory), tier: tier
+            from: modelDirectory, tier: tier
         )
         let coldCompileMilliseconds = Date().timeIntervalSince(compileStarted) * 1000
         let loadStarted = Date()
@@ -455,9 +463,18 @@ final class PaddleOCRProbeTests: XCTestCase {
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(report).write(
-            to: URL(fileURLWithPath: outputPath), options: .atomic
-        )
+        let reportData = try encoder.encode(report)
+        if let outputPath = environment["VERTO_OCR_REPORT_PATH"] {
+            try reportData.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
+        }
+        if let attachmentName = environment["VERTO_OCR_REPORT_ATTACHMENT_NAME"] {
+            let attachment = XCTAttachment(
+                data: reportData, uniformTypeIdentifier: "public.json"
+            )
+            attachment.name = attachmentName
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     /// 韩语没有谚文字表，必须仍然由系统引擎接管，不能悄悄用高精度模型识别成乱码。
@@ -535,6 +552,21 @@ final class PaddleOCRProbeTests: XCTestCase {
     private static func modelTier() throws -> OCRModelTier {
         let value = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_TIER"] ?? "small"
         return try XCTUnwrap(OCRModelTier(rawValue: value), "无效的 VERTO_OCR_MODEL_TIER：\(value)")
+    }
+
+    private static func benchmarkURL(
+        environment: [String: String],
+        absoluteKey: String,
+        bundledKey: String
+    ) -> URL? {
+        if let path = environment[absoluteKey] {
+            return URL(fileURLWithPath: path)
+        }
+        guard let relativePath = environment[bundledKey],
+              let resourceURL = Bundle(for: PaddleOCRProbeTests.self).resourceURL else {
+            return nil
+        }
+        return resourceURL.appendingPathComponent(relativePath)
     }
 
     private static func computeUnits() throws -> ProbeComputeUnits {
