@@ -26,15 +26,22 @@ import Foundation
 ///
 /// 模型不随 app 分发，由 `OCRModelCatalog` 下载安装；本类型只负责用。
 final class PaddleTextRecognitionService: TextRecognitionService {
+    /// 正式 App 永远把调度权交给 Core ML。真实模型探针可以显式注入别的值做
+    /// 配对实验，但生产调用方都走这个默认值，不按芯片维护第二套策略。
+    static let productionComputeUnits: MLComputeUnits = .all
+
     private let model: InstalledOCRModel
     /// 模型与字表加载一次就常驻。Core ML 编译产物的加载在旧机器上要几百毫秒，
     /// 每次快门都重来会让第一张照片明显变慢。
     private let loaded: LoadedModels
 
     /// 加载失败（文件被删/损坏/与字表对不上）时抛错，让调用方回落到系统引擎。
-    init(model: InstalledOCRModel) throws {
+    init(
+        model: InstalledOCRModel,
+        computeUnits: MLComputeUnits = PaddleTextRecognitionService.productionComputeUnits
+    ) throws {
         self.model = model
-        loaded = try LoadedModels(model: model)
+        loaded = try LoadedModels(model: model, computeUnits: computeUnits)
     }
 
     private struct LoadedModels {
@@ -43,11 +50,11 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         let characters: OCRCharacterSet
         let recognizerClassCount: Int
 
-        init(model: InstalledOCRModel) throws {
+        init(model: InstalledOCRModel, computeUnits: MLComputeUnits) throws {
             let configuration = MLModelConfiguration()
-            // 交给系统在神经引擎/GPU/CPU 之间选。模型是固定形状的，
-            // 神经引擎能吃下，实测比纯 CPU 快三倍以上。
-            configuration.computeUnits = .all
+            // 生产默认值是 `.all`，由 Core ML 在 ANE/GPU/CPU 之间调度。这个参数
+            // 只给真实模型探针做同机配对测量，不作为用户开关或芯片白名单。
+            configuration.computeUnits = computeUnits
             detector = try MLModel(contentsOf: model.detectorURL, configuration: configuration)
             recognizer = try MLModel(contentsOf: model.recognizerURL, configuration: configuration)
             characters = try OCRCharacterSet(contentsOf: model.charactersURL)
@@ -173,9 +180,9 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         guard let canvas else { throw TextRecognitionError.recognitionFailed }
         timings.preprocessing += Self.elapsedMilliseconds(since: preprocessingStarted)
 
-        let detectorStarted = collectTimings ? Date() : nil
-        let boxes = try detect(canvas: canvas)
-        timings.detector += Self.elapsedMilliseconds(since: detectorStarted)
+        let boxes = try detect(
+            canvas: canvas, collectTimings: collectTimings, timings: &timings
+        )
         try Task.checkCancellation()
         let detectionQuads = boxes.compactMap {
             TextDetectionPostProcess.quad(
@@ -191,6 +198,7 @@ final class PaddleTextRecognitionService: TextRecognitionService {
                 timingsMilliseconds: [
                     "preprocessing": timings.preprocessing,
                     "detector": timings.detector,
+                    "detectionPostProcess": timings.detectionPostProcess,
                     "recognizer": 0,
                     "recognizerPerLine": 0,
                     "decode": 0,
@@ -237,6 +245,7 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         var raw = [
             "preprocessing": timings.preprocessing,
             "detector": timings.detector,
+            "detectionPostProcess": timings.detectionPostProcess,
             "recognizer": timings.recognizer,
             "decode": timings.decode,
         ]
@@ -251,6 +260,7 @@ final class PaddleTextRecognitionService: TextRecognitionService {
     private struct PipelineTimings {
         var preprocessing = 0.0
         var detector = 0.0
+        var detectionPostProcess = 0.0
         var recognizer = 0.0
         var decode = 0.0
         var recognizerAttempts = 0
@@ -262,7 +272,12 @@ final class PaddleTextRecognitionService: TextRecognitionService {
 
     // MARK: - 检测
 
-    private func detect(canvas: OCRImageCanvas) throws -> [TextDetectionPostProcess.RotatedBox] {
+    private func detect(
+        canvas: OCRImageCanvas,
+        collectTimings: Bool,
+        timings: inout PipelineTimings
+    ) throws -> [TextDetectionPostProcess.RotatedBox] {
+        let preprocessingStarted = collectTimings ? Date() : nil
         let side = model.detectorInputSize
         let input = try MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)],
                                      dataType: .float32)
@@ -274,12 +289,19 @@ final class PaddleTextRecognitionService: TextRecognitionService {
         }
 
         let provider = try MLDictionaryFeatureProvider(dictionary: ["x": MLFeatureValue(multiArray: input)])
+        timings.preprocessing += Self.elapsedMilliseconds(since: preprocessingStarted)
+        let detectorStarted = collectTimings ? Date() : nil
         let output = try loaded.detector.prediction(from: provider)
+        timings.detector += Self.elapsedMilliseconds(since: detectorStarted)
         guard let name = loaded.detector.modelDescription.outputDescriptionsByName.keys.first,
               let probabilities = output.featureValue(for: name)?.multiArrayValue else {
             throw TextRecognitionError.recognitionFailed
         }
 
+        let postProcessStarted = collectTimings ? Date() : nil
+        defer {
+            timings.detectionPostProcess += Self.elapsedMilliseconds(since: postProcessStarted)
+        }
         let values = try Self.denseFloats(from: probabilities)
         guard values.count >= side * side else { throw TextRecognitionError.recognitionFailed }
 
