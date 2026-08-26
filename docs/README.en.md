@@ -87,7 +87,9 @@ On iOS 26 and later, Verto uses SpeechAnalyzer and SpeechTranscriber when the sy
 
 The camera screen can take a photo or load one from the photo library. Text recognition runs on device. Each translation is placed over the recognized quadrilateral and follows the source image's angle, background color, and text color. Tap a translated block to compare the source and translation, then copy it, speak it, or save it to history.
 
-System Vision provides the baseline recognizer. After a PP-OCRv6 pack is downloaded, the camera uses the Core ML detection and recognition models. The separate [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) project builds and publishes these packages. Settings offers Lightweight, Balanced, and Highest accuracy tiers, with download size and recognition score read directly from [`OCRModelTier`](../Verto/Camera/OCRModelPack.swift). Korean always uses system text recognition. The Lightweight pack contains no Japanese kana, so Japanese also uses system text recognition with that tier.
+System Vision provides the baseline recognizer, while the separate [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) project builds and publishes the PP-OCRv6 packs. Production no longer exposes a model picker: A12–A13 devices use Vision only; A14–A16 devices prepare Balanced and then Lightweight at first launch; A17 Pro and newer devices prepare Highest accuracy and then Balanced. Downloads run sequentially in the background. A capture immediately uses Vision whenever no healthy model is ready. Korean always uses Vision, and the Lightweight model does not handle Japanese kana.
+
+With automatic source language, the camera first uses fast Vision plus the system language recognizer to inspect the script. Low-confidence text, Hangul, unknown scripts, and incomplete model coverage are completed by accurate Vision. The repository also includes a separately installable `OCR Test` scheme. Only that build exposes Automatic, Vision, and all three model overrides, with a top-right badge showing the effective engine for the next capture.
 
 Recognized lines are grouped into paragraphs by column, spacing, angle, and type size. [`TextDetectionPostProcess`](../Verto/Camera/TextDetectionPostProcess.swift) owns those rules. Photo output keeps the direction shown in the viewfinder. The recognition copy follows `AVCaptureDevice.RotationCoordinator`, and recognized quadrilaterals are mapped back into the original image coordinates.
 
@@ -99,7 +101,7 @@ Camera access is requested when the screen opens. A denied permission shows an e
 
 The language picker switches source and target languages and searches by name, alias, or language code. History and favorites share one translation store. Tapping a history item refills the text screen.
 
-Settings shows the effective translation service for the current build. It also controls voice playback, automatic speech on the text screen, OCR models, and appearance. The in-house model and LLM translation are disabled roadmap items. Preferences and the most recent language pair are stored in UserDefaults.
+Settings shows the effective translation service for the current build. It also controls voice playback, automatic speech on the text screen, and appearance. Production manages OCR models automatically; only the `OCR Test` build shows test controls. The in-house model and LLM translation are disabled roadmap items. Preferences and the most recent language pair are stored in UserDefaults.
 
 ### Navigation and motion
 

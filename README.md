@@ -87,7 +87,9 @@ iOS 26 及更高版本在系统支持时使用 SpeechAnalyzer 和 SpeechTranscri
 
 相机页可以拍照或从照片库选择图片。文字识别在设备上完成，译文按照识别出的四边形覆盖在原文位置，并沿用原图中的倾角、背景色和文字颜色。轻点译文块可以查看原文与译文，随后复制、朗读或存入历史记录。
 
-系统 Vision 是基础识别方式。下载 PP-OCRv6 模型包后，相机页会使用 Core ML 版检测与识别模型。模型包由独立的 [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) 工程构建并发布。设置页提供轻量、均衡和最高精度三档，并直接从 [`OCRModelTier`](Verto/Camera/OCRModelPack.swift) 读取下载大小和识别分数。韩语始终使用系统文字识别；轻量模型不含日文假名，日语也会使用系统文字识别。
+系统 Vision 是基础识别方式，PP-OCRv6 模型包由独立的 [`PP-OCR-for-Apple`](https://github.com/YspritanHyzygy/PP-OCR-for-Apple) 工程构建并发布。生产版不再让用户选档：A12–A13 设备只用 Vision；A14–A16 首次启动依次准备均衡和轻量模型；A17 Pro 及更新设备依次准备最高精度和均衡模型。下载在后台顺序进行，当前没有健康模型时拍照会立刻使用 Vision，不会等下载。韩语始终使用 Vision；轻量模型不处理日文假名。
+
+源语言设为自动检测时，相机会先用快速 Vision 与系统语言识别判断文字脚本；低置信度、韩文、未知脚本或模型不完整时，再用准确 Vision 完成识别。仓库另带可并装的 `OCR Test` scheme，测试构建才提供自动、Vision 和三档模型覆盖项，并在右上角显示下一次拍照的有效引擎。
 
 识别行会按照栏位、间距、倾角和字号合并为段落。分组判据由 [`TextDetectionPostProcess`](Verto/Camera/TextDetectionPostProcess.swift) 维护。照片输出保留取景时的方向，识别副本按照 `AVCaptureDevice.RotationCoordinator` 的方向处理，识别框随后映射回原图坐标。
 
@@ -99,7 +101,7 @@ iOS 26 及更高版本在系统支持时使用 SpeechAnalyzer 和 SpeechTranscri
 
 语言选择支持源语言与目标语言切换，也可以按名称、别名和语言代码搜索。历史记录和收藏共用同一份翻译数据，轻点历史记录可以回填文字页。
 
-设置页显示当前构建实际使用的翻译服务，并提供语音朗读方式、文字页自动朗读、OCR 模型和外观设置。自研模型与 LLM 翻译目前是禁用的计划项。设置和最后使用的语言对保存在 UserDefaults 中。
+设置页显示当前构建实际使用的翻译服务，并提供语音朗读方式、文字页自动朗读和外观设置。生产版的 OCR 模型完全自动管理；只有 `OCR Test` 构建显示测试控件。自研模型与 LLM 翻译目前是禁用的计划项。设置和最后使用的语言对保存在 UserDefaults 中。
 
 ### 导航与动效
 
