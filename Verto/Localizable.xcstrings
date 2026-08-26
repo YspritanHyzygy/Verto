@@ -2055,39 +2055,129 @@
         }
       }
     },
-    "翻译完成 · 轻点译文查看原文" : {
+    "翻译完成" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Translation complete · Tap a translation to see the original"
+            "value" : "Translation complete"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Traducción completada · Toca una traducción para ver el original"
+            "value" : "Traducción completada"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻訳完了 · 訳文をタップすると原文を確認できます"
+            "value" : "翻訳完了"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "번역 완료 · 번역문을 탭하면 원문을 볼 수 있습니다"
+            "value" : "번역 완료"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "翻译完成 · 轻点译文查看原文"
+            "value" : "翻译完成"
           }
         }
+      }
+    },
+    "翻译完成 · 图片未重建" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translation complete · Image unchanged"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traducción completada · Imagen sin cambios"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻訳完了 · 画像は変更されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "번역 완료 · 이미지는 변경되지 않음"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译完成 · 图片未重建"
+          }
+        }
+      }
+    },
+    "翻译完成 · %lld 处可点按查看" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translation complete · %lld areas available on tap"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traducción completada · %lld zonas disponibles al tocar"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻訳完了 · タップで確認できる箇所：%lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "번역 완료 · 탭하여 확인할 수 있는 영역 %lld개"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译完成 · %lld 处可点按查看"
+          }
+        }
+      }
+    },
+    "选择起点" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Selection start" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Inicio de selección" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "選択範囲の開始" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택 시작" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择起点" } }
+      }
+    },
+    "选择终点" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Selection end" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Fin de selección" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "選択範囲の終了" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "선택 끝" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择终点" } }
       }
     },
     "已选择" : {
@@ -3521,6 +3611,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在安装"
+          }
+        }
+      }
+    },
+    "正在生成译图…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generating translated image…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generando la imagen traducida…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻訳画像を生成中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "번역 이미지를 생성하는 중…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成译图…"
           }
         }
       }

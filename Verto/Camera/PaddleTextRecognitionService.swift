@@ -235,11 +235,18 @@ final class PaddleTextRecognitionService: TextRecognitionService {
             )
             let text = read.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
+            let confidence = min(read.confidence, box.score)
             lines.append(RecognizedTextBlock(
                 text: text,
                 quad: quad,
                 metricsQuad: metricsQuad,
-                confidence: min(read.confidence, box.score)
+                confidence: confidence,
+                tokens: Self.tokens(
+                    text: read.text,
+                    result: read,
+                    lineQuad: quad,
+                    confidence: confidence
+                )
             ))
         }
         var raw = [
@@ -268,6 +275,28 @@ final class PaddleTextRecognitionService: TextRecognitionService {
 
     private static func elapsedMilliseconds(since started: Date?) -> Double {
         started.map { Date().timeIntervalSince($0) * 1000 } ?? 0
+    }
+
+    private static func tokens(
+        text: String,
+        result: CTCDecoder.Result,
+        lineQuad: TextQuad,
+        confidence: Float
+    ) -> [RecognizedTextToken] {
+        guard result.timeSteps > 0, !result.characterSpans.isEmpty else { return [] }
+        return TextTokenization.ranges(in: text).compactMap { token in
+            let spans = result.characterSpans.filter {
+                $0.characterRange.overlaps(token.characterRange)
+            }
+            guard let first = spans.first, let last = spans.last else { return nil }
+            let lower = CGFloat(first.timeStepRange.lowerBound) / CGFloat(result.timeSteps)
+            let upper = CGFloat(last.timeStepRange.upperBound) / CGFloat(result.timeSteps)
+            return RecognizedTextToken(
+                text: token.text,
+                quad: lineQuad.horizontalSlice(from: lower, to: upper),
+                confidence: confidence
+            )
+        }
     }
 
     // MARK: - 检测

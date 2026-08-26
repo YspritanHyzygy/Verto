@@ -64,11 +64,11 @@ final class OCRModelPackMetadataTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: archive) }
         try Data("abc".utf8).write(to: archive)
 
-        XCTAssertNoThrow(try OCRModelPackInstaller.verifyChecksum(
+        XCTAssertNoThrow(try ModelArtifactInstaller.verifyChecksum(
             of: archive,
             expected: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         ))
-        XCTAssertThrowsError(try OCRModelPackInstaller.verifyChecksum(
+        XCTAssertThrowsError(try ModelArtifactInstaller.verifyChecksum(
             of: archive, expected: String(repeating: "0", count: 64)
         )) { error in
             XCTAssertEqual(error as? OCRModelInstallError, .checksumMismatch)
@@ -86,7 +86,7 @@ final class OCRModelPackMetadataTests: XCTestCase {
         try Data("old".utf8).write(to: installed.appendingPathComponent("marker"))
         try Data("new".utf8).write(to: staging.appendingPathComponent("marker"))
 
-        try OCRModelPackInstaller.activate(staging: staging, at: installed)
+        try ModelArtifactInstaller.activate(staging: staging, at: installed)
 
         XCTAssertEqual(
             try String(contentsOf: installed.appendingPathComponent("marker"), encoding: .utf8),

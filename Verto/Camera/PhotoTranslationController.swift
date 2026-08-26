@@ -36,6 +36,8 @@ final class PhotoTranslationController {
         case recognizing
         /// 已出块，译文陆续填入。
         case translating
+        /// 译文已稳定，整张最终图片正在离屏生成。
+        case reconstructing
         case done
         case failed(Failure)
     }
@@ -48,7 +50,7 @@ final class PhotoTranslationController {
 
     /// 一块文字及其译文。译文异步填充：块先带原文上屏，翻译完成再原地替换
     /// ——同语音气泡「识别永不等翻译」的做法。
-    struct TranslatedBlock: Identifiable, Equatable {
+    struct TranslatedBlock: Identifiable, Equatable, @unchecked Sendable {
         let id: UUID
         let source: String
         var translation: String
@@ -56,8 +58,14 @@ final class PhotoTranslationController {
         /// 失败原因。存整个错误而不是一个 Bool——"令牌不对""配额用完""网络断了"
         /// 各要用户做不同的事，都缩成同一个红叹号等于什么都没说。
         var failure: TranslationError?
-        let quad: TextQuad
-        let lineCount: Int
+        let lines: [RecognizedTextLine]
+
+        var quad: TextQuad {
+            lines.dropFirst().reduce(lines[0].quad) { $0.union($1.quad) }
+        }
+
+        var lineCount: Int { lines.count }
+        var tokens: [RecognizedTextToken] { lines.flatMap(\.tokens) }
 
         var failed: Bool { failure != nil }
 
@@ -67,7 +75,18 @@ final class PhotoTranslationController {
         }
     }
 
+    struct FinalTranslatedPhoto: @unchecked Sendable {
+        let generation: Int
+        let photoID: UUID
+        let image: UIImage
+        let inlinedBlockIDs: Set<UUID>
+        let unresolvedBlockIDs: Set<UUID>
+        let backend: PhotoReconstructionBackend
+    }
+
     private(set) var image: UIImage?
+    private(set) var photoID: UUID?
+    private(set) var finalTranslatedPhoto: FinalTranslatedPhoto?
     /// 当前这张照片里的世界相对正立顺时针歪了几个 90°（见 `CapturedPhoto`）。
     /// 只有识别那一步用得上；显示与取色永远吃没动过的 `image`。
     private var imageQuarterTurns = 0
@@ -90,18 +109,27 @@ final class PhotoTranslationController {
     private let translationService: (any TranslationService)?
     private let synthesizer: any SpeechSynthesizing
     private let cache = TranslationMemoryCache()
+    private let photoReconstructor: any PhotoReconstructing
+    private let reconstructionRoute: @MainActor @Sendable (Int) -> PhotoReconstructionRoute
+    private let finalReconstructionHandler: @MainActor @Sendable (PhotoReconstructionResult) -> Void
 
     private var sourceLanguage: Language = .chinese
     private var targetLanguage: Language = .english
 
     /// 换图/重拍时作废前一轮的全部在途回包。识别与翻译的所有异步收尾都对它取证。
-    private var generation = 0
+    private(set) var generation = 0
     private var pipelineTask: Task<Void, Never>?
     /// 按去重后的原文索引，不按块 id——同一句话在一张图上出现多次只发一次请求。
     /// 现在只承载块内重试；整页首次翻译走 batchTask。
     private var blockTasks: [String: Task<Void, Never>] = [:]
     /// 整页一次批量提交。分批由 service 按自己的上限决定，这里只管消费流。
     private var batchTask: Task<Void, Never>?
+    private var reconstructionTask: Task<Void, Never>?
+    private var reconstructionWorker: Task<PhotoReconstructionResult?, Never>?
+    private var activationTask: Task<Void, Never>?
+    private var activationGeneration = 0
+    private(set) var interactionGeneration = 0
+    private var isInteractionActive = false
 
     init(
         settings: AppSettings,
@@ -109,7 +137,14 @@ final class PhotoTranslationController {
         recognizer: any TextRecognitionService,
         modelCatalog: OCRModelCatalog? = nil,
         translationService: (any TranslationService)? = nil,
-        synthesizer: (any SpeechSynthesizing)? = nil
+        synthesizer: (any SpeechSynthesizing)? = nil,
+        photoReconstructor: any PhotoReconstructing = PhotoReconstructionPipeline(),
+        reconstructionRoute: @escaping @MainActor @Sendable (Int) -> PhotoReconstructionRoute = {
+            _ in .adaptive
+        },
+        finalReconstructionHandler: @escaping @MainActor @Sendable (
+            PhotoReconstructionResult
+        ) -> Void = { _ in }
     ) {
         self.settings = settings
         self.captureSource = captureSource
@@ -117,6 +152,9 @@ final class PhotoTranslationController {
         self.modelCatalog = modelCatalog
         self.translationService = translationService
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
+        self.photoReconstructor = photoReconstructor
+        self.reconstructionRoute = reconstructionRoute
+        self.finalReconstructionHandler = finalReconstructionHandler
     }
 
     private var activeService: any TranslationService {
@@ -130,8 +168,21 @@ final class PhotoTranslationController {
         sourceLanguage = source
         targetLanguage = target
         // 已出结果时语言对变了，旧译文即刻失效：留着图重译，不让用户重拍。
-        guard image != nil, !blocks.isEmpty else { return }
-        retranslateAll()
+        guard image != nil else { return }
+        if blocks.isEmpty {
+            retryRecognition()
+        } else {
+            retranslateAll()
+        }
+    }
+
+    func translationEngineDidChange() {
+        guard image != nil else { return }
+        if blocks.isEmpty {
+            retryRecognition()
+        } else {
+            retranslateAll()
+        }
     }
 
     /// 识别用的候选语言。「自动检测」不传给 Vision——交给引擎自己判定。
@@ -143,6 +194,7 @@ final class PhotoTranslationController {
 
     var isBusy: Bool {
         phase == .capturing || phase == .recognizing || phase == .translating
+            || phase == .reconstructing
     }
 
     var isPermissionFailure: Bool {
@@ -165,18 +217,84 @@ final class PhotoTranslationController {
     // MARK: - 生命周期
 
     func start() async {
-        await captureSource.start()
-        // 权限被拒是进入页面就该说清楚的事，不必等用户按快门才报。
-        if captureSource.isPermissionDenied, image == nil {
-            phase = .failed(.permissionDenied(
-                message: CameraCaptureError.permissionDenied.errorDescription ?? ""
-            ))
+        if let activationTask {
+            await activationTask.value
+            return
+        }
+        if !isInteractionActive {
+            isInteractionActive = true
+            interactionGeneration += 1
+        }
+        activationGeneration += 1
+        let activation = activationGeneration
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await captureSource.start()
+            guard !Task.isCancelled, activation == activationGeneration else { return }
+            if captureSource.isPermissionDenied, image == nil {
+                phase = .failed(.permissionDenied(
+                    message: CameraCaptureError.permissionDenied.errorDescription ?? ""
+                ))
+            } else if phase == .ready, image != nil {
+                if blocks.isEmpty {
+                    retryRecognition()
+                } else if blocks.contains(where: \.isPending) {
+                    retranslateAll()
+                } else {
+                    startReconstruction(generation: generation)
+                }
+            }
+        }
+        activationTask = task
+        await task.value
+        if activation == activationGeneration {
+            activationTask = nil
         }
     }
 
     func stop() {
+        if isInteractionActive {
+            isInteractionActive = false
+            interactionGeneration += 1
+        }
+        activationGeneration += 1
+        activationTask?.cancel()
+        activationTask = nil
+        if isBusy {
+            _ = advanceGeneration(clearBlocks: false)
+            phase = image == nil ? .idle : .ready
+        }
         captureSource.stop()
+        if image == nil {
+            captureSource.setPreviewFrozen(false)
+        }
         synthesizer.stop()
+    }
+
+    func handleMemoryWarning() {
+        guard phase == .reconstructing,
+              let reconstructionWorker,
+              let photoID,
+              let image else { return }
+        let blocks = blocks
+        reconstructionTask?.cancel()
+        reconstructionWorker.cancel()
+        let replacement = Task.detached(priority: .userInitiated) {
+            () -> PhotoReconstructionResult? in
+            if let fallback = await reconstructionWorker.value {
+                return fallback
+            }
+            return try? AdaptiveBackgroundReconstructor().reconstruct(
+                image: image,
+                blocks: blocks
+            )
+        }
+        self.reconstructionWorker = replacement
+        awaitReconstruction(
+            replacement,
+            generation: generation,
+            photoID: photoID
+        )
     }
 
     // MARK: - 用户操作
@@ -206,6 +324,7 @@ final class PhotoTranslationController {
                 let photo = captured.image.normalizedUp()
                 guard generation == self.generation else { return }
                 self.image = photo
+                self.photoID = UUID()
                 self.imageQuarterTurns = captured.contentQuarterTurns
                 await self.runRecognition(
                     on: photo,
@@ -232,13 +351,22 @@ final class PhotoTranslationController {
     /// 沿用上次的圈数：重试的是同一张照片，方向不会因为重试而改变。
     func retryRecognition() {
         guard let image else { return }
-        load(image, quarterTurns: imageQuarterTurns)
+        let generation = advanceGeneration(clearBlocks: true)
+        let quarterTurns = imageQuarterTurns
+        pipelineTask = Task { [weak self] in
+            await self?.runRecognition(
+                on: image,
+                quarterTurns: quarterTurns,
+                generation: generation
+            )
+        }
     }
 
     private func load(_ photo: UIImage, quarterTurns: Int) {
         let normalized = photo.normalizedUp()
         let generation = beginNewPass()
         image = normalized
+        photoID = UUID()
         imageQuarterTurns = quarterTurns
         pipelineTask = Task { [weak self] in
             await self?.runRecognition(
@@ -254,14 +382,17 @@ final class PhotoTranslationController {
         _ = beginNewPass()
         synthesizer.stop()
         image = nil
+        photoID = nil
+        finalTranslatedPhoto = nil
         phase = .idle
         // 回到取景就必须解冻，否则下一次进来看到的是上一张的最后一帧。
         captureSource.setPreviewFrozen(false)
     }
 
     func retryTranslation(for blockID: UUID) {
-        guard let block = blocks.first(where: { $0.id == blockID }) else { return }
+        guard let block = blocks.first(where: { $0.id == blockID }), block.failed else { return }
         let text = normalizedSource(of: block)
+        let generation = advanceGeneration(clearBlocks: false)
         // 同一原文的块共用一次翻译，重试自然也是一起重试。
         for index in blocks.indices where normalizedSource(of: blocks[index]) == text {
             blocks[index].failure = nil
@@ -274,11 +405,40 @@ final class PhotoTranslationController {
     func speak(_ block: TranslatedBlock) {
         let text = block.displayText
         guard !text.isEmpty else { return }
-        let languageCode = block.translation.isEmpty
-            ? sourceLanguage.speechLocaleIdentifier
-            : targetLanguage.speechLocaleIdentifier
+        speak(text, translated: !block.translation.isEmpty)
+    }
+
+    func speak(_ text: String, translated: Bool) {
+        guard !text.isEmpty else { return }
+        let languageCode = translated
+            ? targetLanguage.speechLocaleIdentifier
+            : sourceLanguage.speechLocaleIdentifier
         Task { [synthesizer] in
             await synthesizer.speak(text, languageCode: languageCode)
+        }
+    }
+
+    func translateSelection(_ text: String) async -> Result<String, TranslationError> {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return .success("") }
+        guard isInteractionActive else { return .failure(.invalidResponse) }
+        let interaction = interactionGeneration
+        let key = cacheKey(for: normalized)
+        if let cached = cache.result(for: key) { return .success(cached.text) }
+        let request = TranslationRequest(
+            text: normalized,
+            source: sourceLanguage,
+            target: targetLanguage
+        )
+        do {
+            let result = try await activeService.translate(request)
+            guard isInteractionActive, interaction == interactionGeneration else {
+                return .failure(.invalidResponse)
+            }
+            cache.store(result, for: key)
+            return .success(result.text)
+        } catch {
+            return .failure(error as? TranslationError ?? .network)
         }
     }
 
@@ -291,13 +451,23 @@ final class PhotoTranslationController {
 
     /// 作废上一轮并领取新的代号。所有异步收尾都拿它和 `generation` 比对。
     private func beginNewPass() -> Int {
+        advanceGeneration(clearBlocks: true)
+    }
+
+    /// 先推进代次，再取消任务。同步推理即使晚返回，也会因为代次不匹配失去提交资格。
+    private func advanceGeneration(clearBlocks: Bool) -> Int {
+        generation += 1
         pipelineTask?.cancel()
+        pipelineTask = nil
         batchTask?.cancel()
         batchTask = nil
         blockTasks.values.forEach { $0.cancel() }
         blockTasks = [:]
-        blocks = []
-        generation += 1
+        reconstructionTask?.cancel()
+        reconstructionTask = nil
+        reconstructionWorker?.cancel()
+        finalTranslatedPhoto = nil
+        if clearBlocks { blocks = [] }
         return generation
     }
 
@@ -328,8 +498,9 @@ final class PhotoTranslationController {
                     translation: "",
                     isPending: true,
                     failure: nil,
-                    quad: $0.quad.rotatedClockwise(quarterTurns: quarterTurns),
-                    lineCount: $0.lineCount
+                    lines: $0.lines.map {
+                        $0.rotatedClockwise(quarterTurns: quarterTurns)
+                    }
                 )
             }
             phase = .translating
@@ -342,11 +513,7 @@ final class PhotoTranslationController {
     }
 
     private func retranslateAll() {
-        let generation = self.generation
-        batchTask?.cancel()
-        batchTask = nil
-        blockTasks.values.forEach { $0.cancel() }
-        blockTasks = [:]
+        let generation = advanceGeneration(clearBlocks: false)
         for index in blocks.indices {
             blocks[index].translation = ""
             blocks[index].isPending = true
@@ -371,7 +538,7 @@ final class PhotoTranslationController {
             }
         }
         guard !pending.isEmpty else {
-            settleIfFinished()
+            settleIfFinished(generation: generation)
             return
         }
 
@@ -380,6 +547,7 @@ final class PhotoTranslationController {
         let service = activeService
         let source = sourceLanguage
         let target = targetLanguage
+        let keys = Dictionary(uniqueKeysWithValues: pending.map { ($0, cacheKey(for: $0)) })
         batchTask?.cancel()
         batchTask = Task { [weak self] in
             var settled: Set<String> = []
@@ -388,7 +556,7 @@ final class PhotoTranslationController {
                 settled.insert(element.text)
                 switch element.result {
                 case .success(let result):
-                    self.cache.store(result, for: self.cacheKey(for: element.text))
+                    if let key = keys[element.text] { self.cache.store(result, for: key) }
                     self.finish(text: element.text, translation: result.text, failure: nil, generation: generation)
                 case .failure(let error):
                     self.finish(text: element.text, translation: "", failure: error, generation: generation)
@@ -459,12 +627,71 @@ final class PhotoTranslationController {
             blocks[index].isPending = false
             blocks[index].failure = failure
         }
-        settleIfFinished()
+        settleIfFinished(generation: generation)
     }
 
-    private func settleIfFinished() {
-        guard phase == .translating, !blocks.contains(where: \.isPending) else { return }
-        phase = .done
+    private func settleIfFinished(generation: Int) {
+        guard generation == self.generation,
+              phase == .translating,
+              !blocks.contains(where: \.isPending) else { return }
+        startReconstruction(generation: generation)
+    }
+
+    private func startReconstruction(generation: Int) {
+        guard generation == self.generation,
+              let image,
+              let photoID else { return }
+        phase = .reconstructing
+        let blocks = blocks
+        let regionCount = blocks.reduce(0) { partial, block in
+            partial + ((!block.isPending && !block.failed && !block.translation.isEmpty)
+                ? block.lines.count : 0)
+        }
+        let route = reconstructionRoute(regionCount)
+        let reconstructor = photoReconstructor
+        reconstructionWorker?.cancel()
+        let worker = Task.detached(priority: .userInitiated) {
+            () -> PhotoReconstructionResult? in
+            guard !Task.isCancelled else { return nil }
+            do {
+                return try await reconstructor.reconstruct(image: image, blocks: blocks, route: route)
+            } catch is CancellationError {
+                return nil
+            } catch {
+                return PhotoReconstructionResult(
+                    image: image,
+                    inlinedBlockIDs: [],
+                    unresolvedBlockIDs: Set(blocks.map(\.id))
+                )
+            }
+        }
+        reconstructionWorker = worker
+        awaitReconstruction(worker, generation: generation, photoID: photoID)
+    }
+
+    private func awaitReconstruction(
+        _ worker: Task<PhotoReconstructionResult?, Never>,
+        generation: Int,
+        photoID: UUID
+    ) {
+        reconstructionTask = Task { [weak self] in
+            guard let result = await worker.value,
+                  let self,
+                  !Task.isCancelled,
+                  generation == self.generation,
+                  photoID == self.photoID,
+                  self.finalTranslatedPhoto == nil else { return }
+            self.finalTranslatedPhoto = FinalTranslatedPhoto(
+                generation: generation,
+                photoID: photoID,
+                image: result.image,
+                inlinedBlockIDs: result.inlinedBlockIDs,
+                unresolvedBlockIDs: result.unresolvedBlockIDs,
+                backend: result.backend
+            )
+            self.phase = .done
+            self.finalReconstructionHandler(result)
+        }
     }
 
     private func fail(with error: Error) {

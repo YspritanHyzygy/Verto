@@ -15,36 +15,33 @@
 //
 
 import CoreGraphics
+import CoreImage
+import CoreML
+import CoreText
 import SwiftUI
 import UIKit
 
-/// 归一化文字块 → 视图坐标。纯函数，无 SwiftUI 依赖，便于单测。
+enum PhotoDisplayMode: String, Equatable {
+    case original
+    case translation
+}
+
 enum OverlayGeometry {
     struct Placement: Equatable {
-        /// 块中心（视图坐标）。
         var center: CGPoint
-        /// 沿基线的宽 × 垂直基线的高。
         var size: CGSize
-        /// 视图坐标下的倾角（顺时针为正）。
         var angle: Angle
     }
 
-    /// `.aspectFill` 后的真实画布尺寸。画布可能大于视口，图片和贴片共用它，
-    /// 所以拖动时不会出现照片走了、贴片还钉在屏幕上的两套坐标。
     static func aspectFillSize(imageSize: CGSize, in container: CGSize) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0,
               container.width > 0, container.height > 0 else {
             return .zero
         }
         let scale = max(container.width / imageSize.width, container.height / imageSize.height)
-        return CGSize(
-            width: imageSize.width * scale,
-            height: imageSize.height * scale
-        )
+        return CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
     }
 
-    /// 结果默认以 1× 的 aspectFill 构图出现，但用户继续缩小时必须能看到整张照片。
-    /// 这个比例正好把 aspectFill 画布退回 aspectFit；不允许大于 1，避免小画布被反向放大。
     static func minimumZoomScale(canvasSize: CGSize, viewportSize: CGSize) -> CGFloat {
         guard canvasSize.width > 0, canvasSize.height > 0,
               viewportSize.width > 0, viewportSize.height > 0 else {
@@ -56,7 +53,6 @@ enum OverlayGeometry {
         )
     }
 
-    /// Vision 归一化点（原点左下、y 向上）→ 视图点（原点左上、y 向下）。
     static func point(_ normalized: CGPoint, in displayRect: CGRect) -> CGPoint {
         CGPoint(
             x: displayRect.minX + normalized.x * displayRect.width,
@@ -64,33 +60,30 @@ enum OverlayGeometry {
         )
     }
 
-    /// 先把四角各自换算到视图坐标再取角度，**不要**先算 Vision 角再手工取负：
-    /// y 轴翻转对角度的影响由坐标换算自然带出，手工取负在非等比缩放下还会错。
     static func place(_ quad: TextQuad, in displayRect: CGRect) -> Placement {
         let topLeft = point(quad.topLeft, in: displayRect)
         let topRight = point(quad.topRight, in: displayRect)
         let bottomLeft = point(quad.bottomLeft, in: displayRect)
         let bottomRight = point(quad.bottomRight, in: displayRect)
-
         let center = CGPoint(
             x: (topLeft.x + topRight.x + bottomLeft.x + bottomRight.x) / 4,
             y: (topLeft.y + topRight.y + bottomLeft.y + bottomRight.y) / 4
         )
-        let width = max(hypot(topRight.x - topLeft.x, topRight.y - topLeft.y),
-                        hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y))
-        let height = max(hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y),
-                         hypot(bottomRight.x - topRight.x, bottomRight.y - topRight.y))
-        let angle = atan2(topRight.y - topLeft.y, topRight.x - topLeft.x)
-
+        let width = max(
+            hypot(topRight.x - topLeft.x, topRight.y - topLeft.y),
+            hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y)
+        )
+        let height = max(
+            hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y),
+            hypot(bottomRight.x - topRight.x, bottomRight.y - topRight.y)
+        )
         return Placement(
             center: center,
             size: CGSize(width: width, height: height),
-            angle: .radians(Double(angle))
+            angle: .radians(Double(atan2(topRight.y - topLeft.y, topRight.x - topLeft.x)))
         )
     }
 
-    /// 把触点旋回贴片自己的坐标系后判断是否落在框内。译文框可以随原文倾斜，
-    /// 只拿轴对齐包围盒判定会让框外四个角也莫名其妙可点。
     static func contains(
         _ point: CGPoint,
         inRotatedRectAt center: CGPoint,
@@ -107,446 +100,1749 @@ enum OverlayGeometry {
     }
 }
 
-/// 一块文字从原图上采到的配色：底色用来盖掉原文，字色用来写译文。
-struct BlockPalette: Equatable {
-    var background: Color
-    var foreground: Color
-
-    /// 采样失败（图太小、块退化）时的保底：中性深底白字，任何照片上都可读。
-    static let fallback = BlockPalette(
-        background: Color(white: 0.12),
-        foreground: Color(white: 0.97)
-    )
-}
-
-/// 从原图采底色与字色——译文贴片看起来"长在照片里"而不是"贴在照片上"，
-/// 全靠这两个颜色取自原文本身。
-enum ImageColorSampler {
-    private struct RGB {
-        var red: Double
-        var green: Double
-        var blue: Double
-
-        var luminance: Double { 0.2126 * red + 0.7152 * green + 0.0722 * blue }
-
-        func distance(to other: RGB) -> Double {
-            let dr = red - other.red, dg = green - other.green, db = blue - other.blue
-            return dr * dr + dg * dg + db * db
-        }
-
-        var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
-    }
-
-    /// 采样网格边长。取 48 而非更小：细笔画（小字号、瘦体）在粗网格里会被整格
-    /// 漏掉，纯底色格子占压倒多数，字色就被稀释成灰的；再大则纯属浪费。
-    private static let gridSize = 48
-    /// 采样区在文字框外扩的比例（按**行厚**算，不是按包围盒高）。外扩才能吃到
-    /// 文字周围的底色；0.3 够覆盖常见的字距留白，又不至于吃进隔壁那块文字。
-    private static let padRatio: CGFloat = 0.3
-    /// 字色取"与底色距离达到本块最大距离这个比例"的那批像素求均值。
-    ///
-    /// 用相对阈值而不是固定分位数：固定分位数（如最远的 15%）在细笔画块上必然
-    /// 吃进大量底色格，均值被拉回灰色——实测同一张牌子上粗体行字色正确、
-    /// 细体行发灰就是这么来的。相对阈值只收真正接近最深的那批，笔画粗细都成立。
-    private static let inkDistanceRatio = 0.5
-    /// 底色与字色的最小色距平方。低于它说明这块根本没采出对比
-    /// （纯色区域、过曝），退回保底配色而不是画一块看不见的字。
-    private static let minimumContrast = 0.02
-
-    /// 采样区：文字框外扩一圈，仍是 Vision 归一化坐标。
-    ///
-    /// 外扩量按 `uprightHeight`（垂直基线的行厚）算，**不能**按 `boundingBox.height` 算。
-    /// 横排文字这两个数相等，所以过去一直没露馅；但横持拍照的框会整体转 90°，
-    /// 包围盒的"高"这时就是**行长**——按它外扩会一口气吃进半张图，底色与字色
-    /// 全被邻近内容稀释成灰的。斜着印的文字同理。
-    static func sampleBox(for quad: TextQuad) -> CGRect? {
-        let box = quad.boundingBox
-        guard box.width > 0, box.height > 0 else { return nil }
-
-        let pad = quad.uprightHeight * padRatio
-        let padded = box.insetBy(dx: -pad, dy: -pad)
-            .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard !padded.isNull, padded.width > 0, padded.height > 0 else { return nil }
-        return padded
-    }
-
-    static func palette(for quad: TextQuad, in image: CGImage) -> BlockPalette {
-        guard let padded = sampleBox(for: quad) else { return .fallback }
-
-        // Vision 原点在左下，CGImage 裁剪坐标原点在左上：翻 y。
-        let pixelRect = CGRect(
-            x: padded.minX * CGFloat(image.width),
-            y: (1 - padded.maxY) * CGFloat(image.height),
-            width: padded.width * CGFloat(image.width),
-            height: padded.height * CGFloat(image.height)
-        ).integral
-        guard pixelRect.width >= 1, pixelRect.height >= 1,
-              let cropped = image.cropping(to: pixelRect),
-              let pixels = samplePixels(of: cropped) else {
-            return .fallback
-        }
-
-        let background = medianBorderColor(of: pixels)
-        let foreground = inkColor(in: pixels, background: background)
-        guard foreground.distance(to: background) >= minimumContrast else {
-            // 采不出对比就按底色明暗给个高对比字色，至少保证可读。
-            return BlockPalette(
-                background: background.color,
-                foreground: background.luminance > 0.5 ? Color(white: 0.08) : Color(white: 0.96)
-            )
-        }
-        return BlockPalette(background: background.color, foreground: foreground.color)
-    }
-
-    /// 缩到固定网格读像素。插值必须关掉（`.none`）：双线性会把字和底混成
-    /// 中间色，字色就永远采成灰的了。
-    private static func samplePixels(of image: CGImage) -> [RGB]? {
-        let side = gridSize
-        var buffer = [UInt8](repeating: 0, count: side * side * 4)
-        let success = buffer.withUnsafeMutableBytes { raw -> Bool in
-            guard let context = CGContext(
-                data: raw.baseAddress,
-                width: side,
-                height: side,
-                bitsPerComponent: 8,
-                bytesPerRow: side * 4,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            ) else {
-                return false
-            }
-            context.interpolationQuality = .none
-            context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
-            return true
-        }
-        guard success else { return nil }
-
-        return stride(from: 0, to: buffer.count, by: 4).map { offset in
-            RGB(
-                red: Double(buffer[offset]) / 255,
-                green: Double(buffer[offset + 1]) / 255,
-                blue: Double(buffer[offset + 2]) / 255
-            )
-        }
-    }
-
-    /// 底色 = 外圈一整圈像素的逐通道中位数。外扩区几乎全是底，
-    /// 中位数对个别越界进来的笔画免疫。
-    private static func medianBorderColor(of pixels: [RGB]) -> RGB {
-        let side = gridSize
-        var border: [RGB] = []
-        for row in 0..<side {
-            for column in 0..<side where row == 0 || row == side - 1 || column == 0 || column == side - 1 {
-                border.append(pixels[row * side + column])
-            }
-        }
-        guard !border.isEmpty else { return RGB(red: 0, green: 0, blue: 0) }
-        return RGB(
-            red: median(border.map(\.red)),
-            green: median(border.map(\.green)),
-            blue: median(border.map(\.blue))
-        )
-    }
-
-    private static func inkColor(in pixels: [RGB], background: RGB) -> RGB {
-        let distances = pixels.map { $0.distance(to: background) }
-        guard let maxDistance = distances.max(), maxDistance > 0 else { return background }
-        let threshold = maxDistance * inkDistanceRatio
-        let ink = zip(pixels, distances).filter { $0.1 >= threshold }.map(\.0)
-        guard !ink.isEmpty else { return background }
-        let count = Double(ink.count)
-        return RGB(
-            red: ink.map(\.red).reduce(0, +) / count,
-            green: ink.map(\.green).reduce(0, +) / count,
-            blue: ink.map(\.blue).reduce(0, +) / count
-        )
-    }
-
-    private static func median(_ values: [Double]) -> Double {
-        let sorted = values.sorted()
-        guard !sorted.isEmpty else { return 0 }
-        return sorted[sorted.count / 2]
-    }
-}
-
-/// 照片 + 就地叠加的译文贴片。
-struct TranslationOverlayView: View {
+struct PhotoReconstructionResult: @unchecked Sendable {
     let image: UIImage
-    let blocks: [PhotoTranslationController.TranslatedBlock]
-    let onSelect: (PhotoTranslationController.TranslatedBlock) -> Void
-
-    @State private var palettes: [UUID: BlockPalette] = [:]
-
-    var body: some View {
-        GeometryReader { proxy in
-            let canvasSize = OverlayGeometry.aspectFillSize(imageSize: image.size, in: proxy.size)
-            let imageRect = CGRect(origin: .zero, size: canvasSize)
-
-            ZoomableResultCanvas(
-                canvasSize: canvasSize,
-                viewportSize: proxy.size,
-                onTap: { point in
-                    // 后画的贴片在视觉上位于上层；若文字框重叠，点击也选同一块。
-                    if let block = blocks.reversed().first(where: { block in
-                        let placement = OverlayGeometry.place(block.quad, in: imageRect)
-                        return TranslationBlockSticker.contains(
-                            point,
-                            block: block,
-                            placement: placement
-                        )
-                    }) {
-                        onSelect(block)
-                    }
-                }
-            ) {
-                ZStack {
-                    Image(uiImage: image)
-                        .resizable()
-                        .frame(width: canvasSize.width, height: canvasSize.height)
-                        .accessibilityHidden(true)
-
-                    ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-                        TranslationBlockSticker(
-                            block: block,
-                            index: index,
-                            placement: OverlayGeometry.place(block.quad, in: imageRect),
-                            palette: palettes[block.id] ?? .fallback,
-                            onTap: { onSelect(block) }
-                        )
-                    }
-                }
-                .frame(width: canvasSize.width, height: canvasSize.height)
-            }
-        }
-        .task(id: blocks.map(\.id)) {
-            await loadPalettes()
-        }
-    }
-
-    /// 取色只依赖图和块的位置，与译文填充无关——所以按块 id 集合触发一次即可，
-    /// 译文陆续到达不会重算。
-    private func loadPalettes() async {
-        guard let cgImage = image.cgImage else { return }
-        let quads = blocks.map { (id: $0.id, quad: $0.quad) }
-        let sampled = await Task.detached(priority: .userInitiated) {
-            var result: [UUID: BlockPalette] = [:]
-            for entry in quads {
-                result[entry.id] = ImageColorSampler.palette(for: entry.quad, in: cgImage)
-            }
-            return result
-        }.value
-        guard !Task.isCancelled else { return }
-        palettes = sampled
-    }
-}
-
-/// SwiftUI 的 `ScrollView` 与 `MagnifyGesture` 会互相抢识别器：能缩放后单指就拖不动，
-/// 把两个手势合并又会丢掉连续捏合。这里让系统同一个 `UIScrollView` 同时负责两者，
-/// 它承载的仍是上面的唯一一份真实照片与真实贴片，不创建截图或替身内容。
-private struct ZoomableResultCanvas<Content: View>: UIViewRepresentable {
-    let canvasSize: CGSize
-    let viewportSize: CGSize
-    let onTap: (CGPoint) -> Void
-    let content: Content
+    let inlinedBlockIDs: Set<UUID>
+    let unresolvedBlockIDs: Set<UUID>
+    let backend: PhotoReconstructionBackend
 
     init(
-        canvasSize: CGSize,
-        viewportSize: CGSize,
-        onTap: @escaping (CGPoint) -> Void,
-        @ViewBuilder content: () -> Content
+        image: UIImage,
+        inlinedBlockIDs: Set<UUID>,
+        unresolvedBlockIDs: Set<UUID>,
+        backend: PhotoReconstructionBackend = .adaptive
     ) {
-        self.canvasSize = canvasSize
-        self.viewportSize = viewportSize
-        self.onTap = onTap
-        self.content = content()
+        self.image = image
+        self.inlinedBlockIDs = inlinedBlockIDs
+        self.unresolvedBlockIDs = unresolvedBlockIDs
+        self.backend = backend
+    }
+}
+
+enum PhotoReconstructionBackend: String, Sendable {
+    case adaptive
+    case neural
+}
+
+protocol NeuralPhotoReconstructing: Sendable {
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult
+}
+
+enum PhotoReconstructionRoute: @unchecked Sendable {
+    case adaptive
+    case neural(any NeuralPhotoReconstructing)
+
+    var backend: PhotoReconstructionBackend {
+        switch self {
+        case .adaptive: .adaptive
+        case .neural: .neural
+        }
+    }
+}
+
+protocol PhotoReconstructing: Sendable {
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock],
+        route: PhotoReconstructionRoute
+    ) async throws -> PhotoReconstructionResult
+}
+
+struct PhotoReconstructionPipeline: PhotoReconstructing {
+    private enum NeuralRace: @unchecked Sendable {
+        case result(Result<PhotoReconstructionResult, Error>)
+        case timedOut
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(content: content, onTap: onTap)
+    private let watchdogDuration: Duration
+
+    init(watchdogDuration: Duration = .seconds(8)) {
+        self.watchdogDuration = watchdogDuration
     }
 
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
-        scrollView.delegate = context.coordinator
-        scrollView.minimumZoomScale = 1
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock],
+        route: PhotoReconstructionRoute
+    ) async throws -> PhotoReconstructionResult {
+        switch route {
+        case .adaptive:
+            return try AdaptiveBackgroundReconstructor().reconstruct(image: image, blocks: blocks)
+        case .neural(let reconstructor):
+            let adaptiveFallback = try AdaptiveBackgroundReconstructor().reconstruct(
+                image: image,
+                blocks: blocks
+            )
+            try Task.checkCancellation()
+            let pair = AsyncStream<NeuralRace>.makeStream()
+            let neuralTask = Task.detached(priority: .userInitiated) {
+                let result: Result<PhotoReconstructionResult, Error> = Result {
+                    try reconstructor.reconstruct(image: image, blocks: blocks)
+                }
+                pair.continuation.yield(.result(result))
+            }
+            let watchdog = Task.detached {
+                try? await Task.sleep(for: watchdogDuration)
+                guard !Task.isCancelled else { return }
+                pair.continuation.yield(.timedOut)
+            }
+            let event = await withTaskCancellationHandler {
+                var first: NeuralRace?
+                for await candidate in pair.stream {
+                    first = candidate
+                    break
+                }
+                return first
+            } onCancel: {
+                neuralTask.cancel()
+                watchdog.cancel()
+                pair.continuation.finish()
+            }
+            pair.continuation.finish()
+            neuralTask.cancel()
+            watchdog.cancel()
+            if Task.isCancelled {
+                _ = await neuralTask.value
+            }
+            switch event {
+            case .result(.success(let result)):
+                return result
+            case .result(.failure), .timedOut, nil:
+                return adaptiveFallback
+            }
+        }
+    }
+}
+
+/// 在低纹理区域按原图像素生成保守字形掩码，填回局部背景，再绘制译文。
+struct AdaptiveBackgroundReconstructor: @unchecked Sendable {
+    private let context = CIContext(options: [.cacheIntermediates: false])
+
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult {
+        try Task.checkCancellation()
+        guard let cgImage = image.cgImage else {
+            return PhotoReconstructionResult(
+                image: image,
+                inlinedBlockIDs: [],
+                unresolvedBlockIDs: Set(blocks.map(\.id))
+            )
+        }
+        var composed = CIImage(cgImage: cgImage)
+        let extent = composed.extent
+        var acceptedLines: [RecognizedTextLine] = []
+        var inlined: Set<UUID> = []
+        var unresolved: Set<UUID> = []
+
+        for block in blocks {
+            try Task.checkCancellation()
+            guard !block.isPending, !block.failed, !block.translation.isEmpty,
+                  let segments = TranslationLineLayout.segments(
+                    text: block.translation,
+                    count: block.lines.count
+                  ) else {
+                unresolved.insert(block.id)
+                continue
+            }
+
+            var patches: [LinePatch] = []
+            for (line, text) in zip(block.lines, segments) {
+                try Task.checkCancellation()
+                guard let patch = try makePatch(
+                    source: composed,
+                    line: line,
+                    translation: text,
+                    extent: extent
+                ) else {
+                    patches = []
+                    break
+                }
+                patches.append(patch)
+            }
+            guard patches.count == block.lines.count else {
+                unresolved.insert(block.id)
+                continue
+            }
+            for patch in patches {
+                try Task.checkCancellation()
+                composed = patch.background.composited(over: composed).cropped(to: extent)
+                composed = patch.text.composited(over: composed).cropped(to: extent)
+            }
+            acceptedLines.append(contentsOf: block.lines)
+            inlined.insert(block.id)
+        }
+
+        try Task.checkCancellation()
+        guard let rendered = context.createCGImage(composed, from: extent),
+              let output = Self.copyOriginalPixelsOutsideLines(
+                original: cgImage,
+                rendered: rendered,
+                lines: acceptedLines
+              ) else {
+            return PhotoReconstructionResult(
+                image: image,
+                inlinedBlockIDs: [],
+                unresolvedBlockIDs: Set(blocks.map(\.id))
+            )
+        }
+        return PhotoReconstructionResult(
+            image: UIImage(cgImage: output, scale: image.scale, orientation: .up),
+            inlinedBlockIDs: inlined,
+            unresolvedBlockIDs: unresolved
+        )
+    }
+
+    private struct LinePatch {
+        let background: CIImage
+        let text: CIImage
+    }
+
+    private func makePatch(
+        source: CIImage,
+        line: RecognizedTextLine,
+        translation: String,
+        extent: CGRect
+    ) throws -> LinePatch? {
+        try Task.checkCancellation()
+        let points = ciPoints(for: line.quad, extent: extent)
+        guard let correction = CIFilter(name: "CIPerspectiveCorrection") else { return nil }
+        correction.setValue(source, forKey: kCIInputImageKey)
+        correction.setValue(CIVector(cgPoint: points.topLeft), forKey: "inputTopLeft")
+        correction.setValue(CIVector(cgPoint: points.topRight), forKey: "inputTopRight")
+        correction.setValue(CIVector(cgPoint: points.bottomRight), forKey: "inputBottomRight")
+        correction.setValue(CIVector(cgPoint: points.bottomLeft), forKey: "inputBottomLeft")
+        guard let rectified = correction.outputImage,
+              rectified.extent.width >= 8, rectified.extent.height >= 8,
+              let rectifiedCG = context.createCGImage(rectified, from: rectified.extent),
+              let erased = try ConservativeGlyphMask.makePatch(from: rectifiedCG),
+              let textCG = TranslationLineLayout.draw(
+                translation,
+                size: CGSize(width: rectifiedCG.width, height: rectifiedCG.height),
+                color: erased.foreground
+              ) else {
+            return nil
+        }
+
+        guard let background = perspectiveImage(
+            erased.image,
+            topLeft: points.topLeft,
+            topRight: points.topRight,
+            bottomRight: points.bottomRight,
+            bottomLeft: points.bottomLeft,
+            crop: extent
+        ), let text = perspectiveImage(
+            textCG,
+            topLeft: points.topLeft,
+            topRight: points.topRight,
+            bottomRight: points.bottomRight,
+            bottomLeft: points.bottomLeft,
+            crop: extent
+        ) else {
+            return nil
+        }
+        return LinePatch(background: background, text: text)
+    }
+
+    static func copyOriginalPixelsOutsideLines(
+        original: CGImage,
+        rendered: CGImage,
+        lines: [RecognizedTextLine]
+    ) -> CGImage? {
+        let width = original.width
+        let height = original.height
+        guard rendered.width == width, rendered.height == height else { return nil }
+        let colorSpace = original.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let output = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        output.interpolationQuality = .none
+        output.draw(original, in: bounds)
+        guard !lines.isEmpty else { return output.makeImage() }
+
+        // 从原图缓冲区出发，只在已接受的文字四边形内画合成图。这样区域外
+        // 像素根本不会经过 Core Image 的颜色转换或重采样。
+        for line in lines {
+            let points = [
+                line.quad.topLeft,
+                line.quad.topRight,
+                line.quad.bottomRight,
+                line.quad.bottomLeft,
+            ].map { CGPoint(x: $0.x * CGFloat(width), y: $0.y * CGFloat(height)) }
+            let path = CGMutablePath()
+            path.move(to: points[0])
+            points.dropFirst().forEach { path.addLine(to: $0) }
+            path.closeSubpath()
+            output.saveGState()
+            output.addPath(path)
+            output.clip()
+            output.draw(rendered, in: bounds)
+            output.restoreGState()
+        }
+        return output.makeImage()
+    }
+
+    private func perspectiveImage(
+        _ image: CGImage,
+        topLeft: CGPoint,
+        topRight: CGPoint,
+        bottomRight: CGPoint,
+        bottomLeft: CGPoint,
+        crop: CGRect
+    ) -> CIImage? {
+        guard let transform = CIFilter(name: "CIPerspectiveTransform") else { return nil }
+        transform.setValue(CIImage(cgImage: image), forKey: kCIInputImageKey)
+        transform.setValue(CIVector(cgPoint: topLeft), forKey: "inputTopLeft")
+        transform.setValue(CIVector(cgPoint: topRight), forKey: "inputTopRight")
+        transform.setValue(CIVector(cgPoint: bottomRight), forKey: "inputBottomRight")
+        transform.setValue(CIVector(cgPoint: bottomLeft), forKey: "inputBottomLeft")
+        return transform.outputImage?.cropped(to: crop)
+    }
+
+    private func ciPoints(for quad: TextQuad, extent: CGRect) -> (
+        topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint
+    ) {
+        func point(_ normalized: CGPoint) -> CGPoint {
+            CGPoint(
+                x: extent.minX + normalized.x * extent.width,
+                y: extent.minY + normalized.y * extent.height
+            )
+        }
+        return (
+            point(quad.topLeft), point(quad.topRight),
+            point(quad.bottomRight), point(quad.bottomLeft)
+        )
+    }
+}
+
+private enum ConservativeGlyphMask {
+    struct Patch {
+        let image: CGImage
+        let foreground: UIColor
+    }
+
+    /// 这个阈值来自 0...1 RGB 方差。平面纸张与招牌通常低于 0.006，木纹、阴影和
+    /// 渐变会高于它；高纹理区域保留原图。
+    private static let maximumBorderVariance = 0.006
+    private static let minimumInkCoverage = 0.008
+    private static let maximumInkCoverage = 0.42
+
+    static func makePatch(from image: CGImage) throws -> Patch? {
+        try Task.checkCancellation()
+        let width = image.width
+        let height = image.height
+        guard width >= 8, height >= 8 else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drewImage = pixels.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .none
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drewImage else { return nil }
+
+        let border = borderIndices(width: width, height: height)
+        let background = meanColor(indices: border, pixels: pixels)
+        let variance = border.reduce(0.0) { partial, index in
+            let color = rgb(at: index, pixels: pixels)
+            return partial + squaredDistance(color, background)
+        } / Double(max(border.count, 1))
+        guard variance <= maximumBorderVariance else { return nil }
+
+        let threshold = max(0.075, sqrt(variance) * 3.5)
+        var mask = [Bool](repeating: false, count: width * height)
+        var inkColors: [(Double, Double, Double)] = []
+        for index in mask.indices {
+            if index.isMultiple(of: width * 16) { try Task.checkCancellation() }
+            let color = rgb(at: index, pixels: pixels)
+            if sqrt(squaredDistance(color, background)) >= threshold {
+                mask[index] = true
+                inkColors.append(color)
+            }
+        }
+        let coverage = Double(mask.filter { $0 }.count) / Double(mask.count)
+        guard coverage >= minimumInkCoverage, coverage <= maximumInkCoverage else { return nil }
+
+        let expanded = try feathered(mask: mask, width: width, height: height)
+        var output = [UInt8](repeating: 0, count: pixels.count)
+        let red = UInt8((background.0 * 255).rounded())
+        let green = UInt8((background.1 * 255).rounded())
+        let blue = UInt8((background.2 * 255).rounded())
+        for index in mask.indices {
+            let offset = index * 4
+            let alpha = expanded[index]
+            output[offset] = UInt8(UInt16(red) * UInt16(alpha) / 255)
+            output[offset + 1] = UInt8(UInt16(green) * UInt16(alpha) / 255)
+            output[offset + 2] = UInt8(UInt16(blue) * UInt16(alpha) / 255)
+            output[offset + 3] = alpha
+        }
+        let patch = output.withUnsafeMutableBytes { raw -> CGImage? in
+            guard let patchContext = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return nil }
+            return patchContext.makeImage()
+        }
+        guard let patch else { return nil }
+
+        let ink = inkColors.isEmpty ? contrastColor(for: background) : mean(inkColors)
+        let foreground = UIColor(red: ink.0, green: ink.1, blue: ink.2, alpha: 1)
+        return Patch(image: patch, foreground: foreground)
+    }
+
+    private static func borderIndices(width: Int, height: Int) -> [Int] {
+        var indices: [Int] = []
+        for y in 0..<height {
+            for x in 0..<width where x < 2 || y < 2 || x >= width - 2 || y >= height - 2 {
+                indices.append(y * width + x)
+            }
+        }
+        return indices
+    }
+
+    private static func rgb(at index: Int, pixels: [UInt8]) -> (Double, Double, Double) {
+        let offset = index * 4
+        return (
+            Double(pixels[offset]) / 255,
+            Double(pixels[offset + 1]) / 255,
+            Double(pixels[offset + 2]) / 255
+        )
+    }
+
+    private static func meanColor(
+        indices: [Int], pixels: [UInt8]
+    ) -> (Double, Double, Double) {
+        let colors = indices.map { rgb(at: $0, pixels: pixels) }
+        return mean(colors)
+    }
+
+    private static func mean(_ values: [(Double, Double, Double)]) -> (Double, Double, Double) {
+        let count = Double(max(values.count, 1))
+        return values.reduce((0.0, 0.0, 0.0)) {
+            ($0.0 + $1.0 / count, $0.1 + $1.1 / count, $0.2 + $1.2 / count)
+        }
+    }
+
+    private static func squaredDistance(
+        _ lhs: (Double, Double, Double), _ rhs: (Double, Double, Double)
+    ) -> Double {
+        let red = lhs.0 - rhs.0
+        let green = lhs.1 - rhs.1
+        let blue = lhs.2 - rhs.2
+        return (red * red + green * green + blue * blue) / 3
+    }
+
+    private static func contrastColor(
+        for color: (Double, Double, Double)
+    ) -> (Double, Double, Double) {
+        let luminance = 0.2126 * color.0 + 0.7152 * color.1 + 0.0722 * color.2
+        return luminance > 0.5 ? (0.05, 0.05, 0.05) : (0.96, 0.96, 0.96)
+    }
+
+    private static func feathered(
+        mask: [Bool], width: Int, height: Int
+    ) throws -> [UInt8] {
+        var alpha = [UInt8](repeating: 0, count: mask.count)
+        for y in 0..<height {
+            if y.isMultiple(of: 16) { try Task.checkCancellation() }
+            for x in 0..<width {
+                let index = y * width + x
+                if mask[index] {
+                    alpha[index] = 255
+                    continue
+                }
+                var touchesInk = false
+                for offsetY in -1...1 {
+                    for offsetX in -1...1 {
+                        let sampleX = x + offsetX
+                        let sampleY = y + offsetY
+                        guard sampleX >= 0, sampleX < width,
+                              sampleY >= 0, sampleY < height else { continue }
+                        touchesInk = touchesInk || mask[sampleY * width + sampleX]
+                    }
+                }
+                if touchesInk { alpha[index] = 128 }
+            }
+        }
+        return alpha
+    }
+}
+
+private enum TranslationLineLayout {
+    static func segments(text: String, count: Int) -> [String]? {
+        guard count > 0 else { return nil }
+        if count == 1 { return [text] }
+        let tokens = TextTokenization.ranges(in: text).map(\.text)
+        guard tokens.count >= count else { return nil }
+        let target = max(1, text.count / count)
+        var result: [String] = []
+        var current = ""
+        for token in tokens {
+            let candidate = current.isEmpty ? token : TextBlockGrouping.join(current, token)
+            if !current.isEmpty, result.count < count - 1,
+               candidate.count > target {
+                result.append(current)
+                current = token
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty { result.append(current) }
+        guard result.count == count else { return nil }
+        return result
+    }
+
+    static func draw(_ text: String, size: CGSize, color: UIColor) -> CGImage? {
+        guard size.width >= 1, size.height >= 1 else { return nil }
+        let maximum = size.height * 0.74
+        let minimum = size.height * 0.55
+        let baseFont = UIFont.systemFont(ofSize: maximum, weight: .medium)
+        let measured = (text as NSString).size(withAttributes: [.font: baseFont]).width
+        let scale = min(1, (size.width * 0.96) / max(measured, 1))
+        let fontSize = maximum * scale
+        guard fontSize >= minimum else { return nil }
+
+        let width = max(1, Int(size.width.rounded(.up)))
+        let height = max(1, Int(size.height.rounded(.up)))
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        return pixels.withUnsafeMutableBytes { raw -> CGImage? in
+            guard let context = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return nil }
+            let attributed = NSAttributedString(
+                string: text,
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: fontSize, weight: .medium),
+                    .foregroundColor: color,
+                ]
+            )
+            let line = CTLineCreateWithAttributedString(attributed)
+            let bounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+            context.textPosition = CGPoint(
+                x: max(0, (CGFloat(width) - bounds.width) / 2 - bounds.minX),
+                y: max(0, (CGFloat(height) - bounds.height) / 2 - bounds.minY)
+            )
+            CTLineDraw(line, context)
+            return context.makeImage()
+        }
+    }
+}
+
+struct NeuralReconstructionPolicy: Equatable {
+    static func allows(
+        medianSeconds: Double,
+        regionCount: Int,
+        lowPowerMode: Bool,
+        thermalState: ProcessInfo.ThermalState,
+        hadMemoryWarning: Bool
+    ) -> Bool {
+        let thermalAllowed = thermalState == .nominal || thermalState == .fair
+        return medianSeconds <= 1
+            && medianSeconds * Double(regionCount) <= 6
+            && !lowPowerMode
+            && thermalAllowed
+            && !hadMemoryWarning
+    }
+}
+
+/// MI-GAN 的真实 Core ML 执行器。模型许可与发布闸门通过前，产品不会构造这个类型。
+struct NeuralBackgroundReconstructor: @unchecked Sendable {
+    static let inputSize = 512
+
+    private let model: MLModel
+
+    init(modelURL: URL, computeUnits: MLComputeUnits = .all) throws {
+        let configuration = MLModelConfiguration()
+        configuration.computeUnits = computeUnits
+        model = try MLModel(contentsOf: modelURL, configuration: configuration)
+    }
+
+    func reconstruct(image: CGImage, knownMask: CGImage) throws -> CGImage {
+        try Task.checkCancellation()
+        guard image.width > 0, image.height > 0,
+              image.width == knownMask.width, image.height == knownMask.height else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        let size = Self.inputSize
+        let imageValues = try MLMultiArray(
+            shape: [1, 3, NSNumber(value: size), NSNumber(value: size)],
+            dataType: .float16
+        )
+        let maskValues = try MLMultiArray(
+            shape: [1, 1, NSNumber(value: size), NSNumber(value: size)],
+            dataType: .float16
+        )
+        let inputs = try fill(
+            image: image,
+            mask: knownMask,
+            imageValues: imageValues,
+            maskValues: maskValues
+        )
+        let provider = try MLDictionaryFeatureProvider(dictionary: [
+            "image": MLFeatureValue(multiArray: imageValues),
+            "mask": MLFeatureValue(multiArray: maskValues),
+        ])
+        try Task.checkCancellation()
+        let prediction = try model.prediction(from: provider)
+        try Task.checkCancellation()
+        guard let output = prediction.featureValue(for: "output")?.multiArrayValue else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        return try makeImage(
+            from: output,
+            originalBytes: inputs.imageBytes,
+            knownMaskBytes: inputs.maskBytes
+        )
+    }
+
+    private struct InputPixels {
+        let imageBytes: [UInt8]
+        let maskBytes: [UInt8]
+    }
+
+    private func fill(
+        image: CGImage,
+        mask: CGImage,
+        imageValues: MLMultiArray,
+        maskValues: MLMultiArray
+    ) throws -> InputPixels {
+        let width = Self.inputSize
+        let height = Self.inputSize
+        var imageBytes = [UInt8](repeating: 0, count: width * height * 4)
+        var maskBytes = [UInt8](repeating: 0, count: width * height)
+        let drewImage = imageBytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let imageContext = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            imageContext.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        let drewMask = maskBytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let maskContext = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            ) else { return false }
+            maskContext.draw(mask, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drewImage, drewMask else { throw OCRModelInstallError.compilationFailed }
+        imageValues.withUnsafeMutableBytes { raw, _ in
+            let values = raw.bindMemory(to: Float16.self)
+            for channel in 0..<3 {
+                for index in 0..<(width * height) {
+                    values[channel * width * height + index] = Float16(
+                        Float(imageBytes[index * 4 + channel]) / 255
+                    )
+                }
+            }
+        }
+        maskValues.withUnsafeMutableBytes { raw, _ in
+            let values = raw.bindMemory(to: Float16.self)
+            for index in 0..<(width * height) {
+                values[index] = Float16(Float(maskBytes[index]) / 255)
+            }
+        }
+        return InputPixels(imageBytes: imageBytes, maskBytes: maskBytes)
+    }
+
+    private func makeImage(
+        from output: MLMultiArray,
+        originalBytes: [UInt8],
+        knownMaskBytes: [UInt8]
+    ) throws -> CGImage {
+        let shape = output.shape.map(\.intValue)
+        let size = Self.inputSize
+        guard shape == [1, 3, size, size], output.dataType == .float32 else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        let width = size
+        let height = size
+        let strides = output.strides.map(\.intValue)
+        var bytes = [UInt8](repeating: 255, count: width * height * 4)
+        output.withUnsafeMutableBytes { raw, _ in
+            guard let values = raw.bindMemory(to: Float.self).baseAddress else { return }
+            for channel in 0..<3 {
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let source = channel * strides[1] + y * strides[2] + x * strides[3]
+                        let value = min(max(values[source], 0), 1)
+                        bytes[(y * width + x) * 4 + channel] = UInt8((value * 255).rounded())
+                    }
+                }
+            }
+        }
+        bytes = Self.blendGeneratedPixels(
+            bytes,
+            with: originalBytes,
+            knownMask: knownMaskBytes
+        )
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let image = CGImage(
+                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
+              ) else {
+            throw OCRModelInstallError.compilationFailed
+        }
+        return image
+    }
+
+    static func blendGeneratedPixels(
+        _ generated: [UInt8],
+        with original: [UInt8],
+        knownMask: [UInt8]
+    ) -> [UInt8] {
+        guard generated.count == original.count,
+              generated.count == knownMask.count * 4 else { return original }
+        var blended = generated
+        for index in knownMask.indices {
+            let known = UInt16(knownMask[index])
+            let hole = 255 - known
+            let offset = index * 4
+            for channel in 0..<3 {
+                blended[offset + channel] = UInt8(
+                    (UInt16(original[offset + channel]) * known
+                        + UInt16(generated[offset + channel]) * hole
+                        + 127) / 255
+                )
+            }
+            blended[offset + 3] = original[offset + 3]
+        }
+        return blended
+    }
+}
+
+private struct NeuralPhotoPatchBuilder {
+    private struct Points {
+        let topLeft: CGPoint
+        let topRight: CGPoint
+        let bottomRight: CGPoint
+        let bottomLeft: CGPoint
+
+        var all: [CGPoint] { [topLeft, topRight, bottomRight, bottomLeft] }
+    }
+
+    private let kernel: NeuralBackgroundReconstructor
+    private let context: CIContext
+    private let modelExtent = CGRect(
+        x: 0,
+        y: 0,
+        width: NeuralBackgroundReconstructor.inputSize,
+        height: NeuralBackgroundReconstructor.inputSize
+    )
+
+    init(kernel: NeuralBackgroundReconstructor, context: CIContext) {
+        self.kernel = kernel
+        self.context = context
+    }
+
+    func applying(
+        lines: [RecognizedTextLine],
+        translations: [String],
+        to source: CIImage,
+        extent: CGRect
+    ) throws -> CIImage? {
+        guard lines.count == translations.count, !lines.isEmpty else { return nil }
+        try Task.checkCancellation()
+        let linePoints = lines.map { points(for: $0.quad, extent: extent) }
+        let crop = squareCrop(enclosing: linePoints, extent: extent)
+        guard crop.width >= 2 else { return nil }
+
+        var textImages: [CIImage] = []
+        for (line, translation) in zip(linePoints, translations) {
+            try Task.checkCancellation()
+            guard let text = makeTextImage(
+                source: source,
+                translation: translation,
+                points: line,
+                extent: extent
+            ) else { return nil }
+            textImages.append(text)
+        }
+
+        let scale = modelExtent.width / crop.width
+        let modelSource = source.clampedToExtent()
+            .cropped(to: crop)
+            .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .cropped(to: modelExtent)
+        guard let modelInput = context.createCGImage(modelSource, from: modelExtent),
+              let knownMask = makeKnownMask(points: linePoints, crop: crop, scale: scale) else {
+            return nil
+        }
+
+        let generated = try kernel.reconstruct(image: modelInput, knownMask: knownMask)
+        try Task.checkCancellation()
+        guard let featheredPatch = featheredGeneratedPatch(
+            generated: generated,
+            knownMask: knownMask
+        ) else { return nil }
+
+        let inverseScale = crop.width / modelExtent.width
+        let background = featheredPatch
+            .transformed(by: CGAffineTransform(scaleX: inverseScale, y: inverseScale))
+            .transformed(by: CGAffineTransform(translationX: crop.minX, y: crop.minY))
+            .cropped(to: extent)
+        var composed = background.composited(over: source).cropped(to: extent)
+        for text in textImages {
+            composed = text.composited(over: composed).cropped(to: extent)
+        }
+        return composed
+    }
+
+    private func squareCrop(enclosing groups: [Points], extent: CGRect) -> CGRect {
+        let all = groups.flatMap(\.all)
+        let minX = all.map(\.x).min() ?? extent.midX
+        let maxX = all.map(\.x).max() ?? extent.midX
+        let minY = all.map(\.y).min() ?? extent.midY
+        let maxY = all.map(\.y).max() ?? extent.midY
+        let width = maxX - minX
+        let height = maxY - minY
+        let contextPadding = max(12, min(max(width, height) * 0.18, 160))
+        let side = max(max(width, height) + contextPadding * 2, 32)
+        return CGRect(
+            x: (minX + maxX - side) / 2,
+            y: (minY + maxY - side) / 2,
+            width: side,
+            height: side
+        )
+    }
+
+    private func makeKnownMask(
+        points groups: [Points],
+        crop: CGRect,
+        scale: CGFloat
+    ) -> CGImage? {
+        let size = NeuralBackgroundReconstructor.inputSize
+        guard let maskContext = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: size,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        maskContext.setShouldAntialias(false)
+        maskContext.setFillColor(gray: 1, alpha: 1)
+        maskContext.fill(modelExtent)
+        maskContext.setFillColor(gray: 0, alpha: 1)
+        for group in groups {
+            let transformed = group.all.map {
+                CGPoint(x: ($0.x - crop.minX) * scale, y: ($0.y - crop.minY) * scale)
+            }
+            let path = CGMutablePath()
+            path.move(to: transformed[0])
+            transformed.dropFirst().forEach { path.addLine(to: $0) }
+            path.closeSubpath()
+            maskContext.addPath(path)
+            maskContext.fillPath()
+        }
+        return maskContext.makeImage()
+    }
+
+    private func featheredGeneratedPatch(
+        generated: CGImage,
+        knownMask: CGImage
+    ) -> CIImage? {
+        let generatedImage = CIImage(cgImage: generated).cropped(to: modelExtent)
+        let known = CIImage(cgImage: knownMask).cropped(to: modelExtent)
+        guard let invert = CIFilter(name: "CIColorInvert"),
+              let blur = CIFilter(name: "CIGaussianBlur"),
+              let blend = CIFilter(name: "CIBlendWithMask") else { return nil }
+        invert.setValue(known, forKey: kCIInputImageKey)
+        guard let hole = invert.outputImage?.cropped(to: modelExtent) else { return nil }
+        blur.setValue(hole, forKey: kCIInputImageKey)
+        blur.setValue(3.0, forKey: kCIInputRadiusKey)
+        guard let feather = blur.outputImage?.cropped(to: modelExtent) else { return nil }
+        blend.setValue(generatedImage, forKey: kCIInputImageKey)
+        blend.setValue(CIImage(color: .clear).cropped(to: modelExtent), forKey: kCIInputBackgroundImageKey)
+        blend.setValue(feather, forKey: kCIInputMaskImageKey)
+        return blend.outputImage?.cropped(to: modelExtent)
+    }
+
+    private func makeTextImage(
+        source: CIImage,
+        translation: String,
+        points: Points,
+        extent: CGRect
+    ) -> CIImage? {
+        guard let correction = CIFilter(name: "CIPerspectiveCorrection") else { return nil }
+        correction.setValue(source, forKey: kCIInputImageKey)
+        correction.setValue(CIVector(cgPoint: points.topLeft), forKey: "inputTopLeft")
+        correction.setValue(CIVector(cgPoint: points.topRight), forKey: "inputTopRight")
+        correction.setValue(CIVector(cgPoint: points.bottomRight), forKey: "inputBottomRight")
+        correction.setValue(CIVector(cgPoint: points.bottomLeft), forKey: "inputBottomLeft")
+        guard let rectified = correction.outputImage,
+              rectified.extent.width >= 2, rectified.extent.height >= 2,
+              let rectifiedCG = context.createCGImage(rectified, from: rectified.extent),
+              let text = TranslationLineLayout.draw(
+                translation,
+                size: CGSize(width: rectifiedCG.width, height: rectifiedCG.height),
+                color: Self.foregroundColor(in: rectifiedCG)
+              ),
+              let transform = CIFilter(name: "CIPerspectiveTransform") else {
+            return nil
+        }
+        transform.setValue(CIImage(cgImage: text), forKey: kCIInputImageKey)
+        transform.setValue(CIVector(cgPoint: points.topLeft), forKey: "inputTopLeft")
+        transform.setValue(CIVector(cgPoint: points.topRight), forKey: "inputTopRight")
+        transform.setValue(CIVector(cgPoint: points.bottomRight), forKey: "inputBottomRight")
+        transform.setValue(CIVector(cgPoint: points.bottomLeft), forKey: "inputBottomLeft")
+        return transform.outputImage?.cropped(to: extent)
+    }
+
+    private func points(for quad: TextQuad, extent: CGRect) -> Points {
+        func point(_ normalized: CGPoint) -> CGPoint {
+            CGPoint(
+                x: extent.minX + normalized.x * extent.width,
+                y: extent.minY + normalized.y * extent.height
+            )
+        }
+        return Points(
+            topLeft: point(quad.topLeft),
+            topRight: point(quad.topRight),
+            bottomRight: point(quad.bottomRight),
+            bottomLeft: point(quad.bottomLeft)
+        )
+    }
+
+    private static func foregroundColor(in image: CGImage) -> UIColor {
+        let width = min(max(image.width, 1), 96)
+        let height = min(max(image.height, 1), 48)
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drew = pixels.withUnsafeMutableBytes { raw -> Bool in
+            guard let colorContext = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            colorContext.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drew else { return .label }
+        let colors = stride(from: 0, to: pixels.count, by: 4).map { offset in
+            SIMD3<Double>(
+                Double(pixels[offset]) / 255,
+                Double(pixels[offset + 1]) / 255,
+                Double(pixels[offset + 2]) / 255
+            )
+        }
+        let border = colors.enumerated().compactMap { index, color -> SIMD3<Double>? in
+            let x = index % width
+            let y = index / width
+            return x < 2 || y < 2 || x >= width - 2 || y >= height - 2 ? color : nil
+        }
+        let background = mean(border.isEmpty ? colors : border)
+        let distances = colors.map { distanceSquared($0, background) }
+        let maximum = distances.max() ?? 0
+        let ink = zip(colors, distances).compactMap { color, distance in
+            distance >= maximum * 0.55 ? color : nil
+        }
+        let foreground = mean(ink)
+        guard maximum >= 0.018 else {
+            let luminance = 0.2126 * background.x + 0.7152 * background.y + 0.0722 * background.z
+            return luminance > 0.5 ? UIColor(white: 0.06, alpha: 1) : UIColor(white: 0.96, alpha: 1)
+        }
+        return UIColor(red: foreground.x, green: foreground.y, blue: foreground.z, alpha: 1)
+    }
+
+    private static func mean(_ colors: [SIMD3<Double>]) -> SIMD3<Double> {
+        guard !colors.isEmpty else { return SIMD3(repeating: 0.5) }
+        return colors.reduce(SIMD3(repeating: 0), +) / Double(colors.count)
+    }
+
+    private static func distanceSquared(
+        _ lhs: SIMD3<Double>,
+        _ rhs: SIMD3<Double>
+    ) -> Double {
+        let difference = lhs - rhs
+        return (difference * difference).sum() / 3
+    }
+}
+
+/// 用段落方形裁片完成背景重建，再按原有行四边形排入译文。
+struct NeuralPhotoBackgroundReconstructor: NeuralPhotoReconstructing, @unchecked Sendable {
+    let kernel: NeuralBackgroundReconstructor
+
+    private let context = CIContext(options: [.cacheIntermediates: false])
+
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult {
+        try Task.checkCancellation()
+        guard let original = image.cgImage else {
+            return PhotoReconstructionResult(
+                image: image,
+                inlinedBlockIDs: [],
+                unresolvedBlockIDs: Set(blocks.map(\.id)),
+                backend: .neural
+            )
+        }
+        let extent = CGRect(x: 0, y: 0, width: original.width, height: original.height)
+        var composed = CIImage(cgImage: original)
+        let builder = NeuralPhotoPatchBuilder(kernel: kernel, context: context)
+        var acceptedLines: [RecognizedTextLine] = []
+        var inlined: Set<UUID> = []
+        var unresolved: Set<UUID> = []
+
+        for block in blocks {
+            try Task.checkCancellation()
+            guard !block.isPending, !block.failed, !block.translation.isEmpty,
+                  let segments = TranslationLineLayout.segments(
+                    text: block.translation,
+                    count: block.lines.count
+                  ),
+                  let candidate = try builder.applying(
+                    lines: block.lines,
+                    translations: segments,
+                    to: composed,
+                    extent: extent
+                  ) else {
+                unresolved.insert(block.id)
+                continue
+            }
+            composed = candidate
+            acceptedLines.append(contentsOf: block.lines)
+            inlined.insert(block.id)
+        }
+
+        try Task.checkCancellation()
+        guard let rendered = context.createCGImage(composed, from: extent),
+              let output = AdaptiveBackgroundReconstructor.copyOriginalPixelsOutsideLines(
+                original: original,
+                rendered: rendered,
+                lines: acceptedLines
+              ) else {
+            return PhotoReconstructionResult(
+                image: image,
+                inlinedBlockIDs: [],
+                unresolvedBlockIDs: Set(blocks.map(\.id)),
+                backend: .neural
+            )
+        }
+        return PhotoReconstructionResult(
+            image: UIImage(cgImage: output, scale: image.scale, orientation: .up),
+            inlinedBlockIDs: inlined,
+            unresolvedBlockIDs: unresolved,
+            backend: .neural
+        )
+    }
+}
+
+struct TranslatedPhotoCanvas: UIViewRepresentable {
+    struct Actions {
+        let translateSelection: (String) async -> Result<String, TranslationError>
+        let isSelectionCurrent: @MainActor () -> Bool
+        let speak: (String, Bool) -> Void
+        let save: (String, String) -> Void
+        let retryBlock: (UUID) -> Void
+    }
+
+    let photoID: UUID
+    let generation: Int
+    let originalImage: UIImage
+    let translatedImage: UIImage?
+    let blocks: [PhotoTranslationController.TranslatedBlock]
+    let mode: PhotoDisplayMode
+    let actions: Actions
+
+    func makeUIView(context: Context) -> TranslatedPhotoCanvasView {
+        let view = TranslatedPhotoCanvasView()
+        view.accessibilityIdentifier = "camera.resultCanvas"
+        return view
+    }
+
+    func updateUIView(_ view: TranslatedPhotoCanvasView, context: Context) {
+        view.configure(
+            photoID: photoID,
+            generation: generation,
+            originalImage: originalImage,
+            translatedImage: translatedImage,
+            blocks: blocks,
+            mode: mode,
+            actions: actions
+        )
+    }
+
+    static func dismantleUIView(_ uiView: TranslatedPhotoCanvasView, coordinator: Void) {
+        uiView.invalidateAsyncWork()
+    }
+}
+
+@MainActor
+final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    private let scrollView = UIScrollView()
+    private let contentView = UIView()
+    private let imageView = UIImageView()
+    private let highlightLayer = CAShapeLayer()
+    private let startHandle = SelectionHandleView(label: String(localized: "选择起点"))
+    private let endHandle = SelectionHandleView(label: String(localized: "选择终点"))
+    private let card = PhotoSelectionCardView()
+    private var currentPhotoID: UUID?
+    private var currentGeneration = 0
+    private var originalImage: UIImage?
+    private var translatedImage: UIImage?
+    private var blocks: [PhotoTranslationController.TranslatedBlock] = []
+    private var mode: PhotoDisplayMode = .translation
+    private var actions: TranslatedPhotoCanvas.Actions?
+    private var selection: ClosedRange<Int>?
+    private var selectionRevision = 0
+    private var selectionTask: Task<Void, Never>?
+    private var canvasSize = CGSize.zero
+    private var didSetInitialGeometry = false
+
+    private lazy var tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTap(_:)))
+    private lazy var longPressGesture: UILongPressGestureRecognizer = {
+        let gesture = UILongPressGestureRecognizer(target: self, action: #selector(didLongPress(_:)))
+        gesture.minimumPressDuration = 0.42
+        gesture.allowableMovement = 10
+        return gesture
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+        scrollView.delegate = self
         scrollView.maximumZoomScale = 5
         scrollView.bounces = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.contentInsetAdjustmentBehavior = .never
-        scrollView.accessibilityIdentifier = "camera.resultCanvas"
+        addSubview(scrollView)
+        scrollView.addSubview(contentView)
+        imageView.contentMode = .scaleToFill
+        imageView.isAccessibilityElement = false
+        contentView.addSubview(imageView)
+        highlightLayer.fillColor = UIColor.systemBlue.withAlphaComponent(0.24).cgColor
+        highlightLayer.strokeColor = UIColor.systemBlue.cgColor
+        highlightLayer.lineWidth = 1.5
+        contentView.layer.addSublayer(highlightLayer)
+        contentView.addSubview(startHandle)
+        contentView.addSubview(endHandle)
+        startHandle.onMove = { [weak self] point in self?.moveHandle(start: true, to: point) }
+        endHandle.onMove = { [weak self] point in self?.moveHandle(start: false, to: point) }
+        startHandle.accessibilityIdentifier = "camera.selectionHandle.start"
+        endHandle.accessibilityIdentifier = "camera.selectionHandle.end"
+        startHandle.onAdjust = { [weak self] direction in self?.adjustHandle(start: true, direction: direction) }
+        endHandle.onAdjust = { [weak self] direction in self?.adjustHandle(start: false, direction: direction) }
+        startHandle.isHidden = true
+        endHandle.isHidden = true
+        addSubview(card)
+        card.isHidden = true
+        card.onClose = { [weak self] in self?.clearSelection() }
+        card.onCopy = { text in UIPasteboard.general.string = text }
+        card.onSpeak = { [weak self] text, translated in self?.actions?.speak(text, translated) }
+        card.onSave = { [weak self] source, translation in self?.actions?.save(source, translation) }
+        card.onRetryBlock = { [weak self] id in self?.actions?.retryBlock(id) }
+        card.onRetrySelection = { [weak self] text in self?.translateSelection(text) }
 
-        // UIKit 的 tap 会等 pan / pinch 明确失败后才触发：框上拖动和双指缩放
-        // 因而始终属于画布，只有几乎没位移的一指轻点才会进入译文详情。
-        let tapGesture = context.coordinator.tapGesture
+        tapGesture.delegate = self
         tapGesture.require(toFail: scrollView.panGestureRecognizer)
-        if let pinchGesture = scrollView.pinchGestureRecognizer {
-            tapGesture.require(toFail: pinchGesture)
-        }
-        scrollView.addGestureRecognizer(tapGesture)
-
-        let hostedView = context.coordinator.hostingController.view!
-        hostedView.backgroundColor = .clear
-        scrollView.addSubview(hostedView)
-        return scrollView
+        if let pinch = scrollView.pinchGestureRecognizer { tapGesture.require(toFail: pinch) }
+        contentView.addGestureRecognizer(tapGesture)
+        contentView.addGestureRecognizer(longPressGesture)
+        scrollView.panGestureRecognizer.require(toFail: longPressGesture)
     }
 
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.onTap = onTap
-        // 译文逐块到达，这一行每次都要跑；下面的几何重置则不能。
-        coordinator.hostingController.rootView = content
+    required init?(coder: NSCoder) { nil }
 
-        // 画布尺寸没变就到此为止。UIScrollView 的缩放是给 viewForZooming
-        // 挂 transform 实现的，此时 hostedView.frame 未定义、contentSize 由 scroll view
-        // 自己按 zoomScale 维护——每落一块译文就重写一遍，会把正放大着的画面拽回去。
-        guard coordinator.canvasSize != canvasSize || coordinator.viewportSize != viewportSize else {
+    func configure(
+        photoID: UUID,
+        generation: Int,
+        originalImage: UIImage,
+        translatedImage: UIImage?,
+        blocks: [PhotoTranslationController.TranslatedBlock],
+        mode: PhotoDisplayMode,
+        actions: TranslatedPhotoCanvas.Actions
+    ) {
+        let photoChanged = currentPhotoID != photoID
+        let generationChanged = currentGeneration != generation
+        let finalImageArrived = self.translatedImage == nil && translatedImage != nil
+        if photoChanged || generationChanged {
+            invalidateSelection()
+        }
+        currentPhotoID = photoID
+        currentGeneration = generation
+        self.originalImage = originalImage
+        self.translatedImage = translatedImage
+        self.blocks = blocks
+        self.actions = actions
+        card.refreshPresentedBlock(from: blocks)
+        if self.mode != mode {
+            self.mode = mode
+            clearSelection()
+        }
+        if mode == .original || translatedImage == nil {
+            imageView.image = originalImage
+        } else if finalImageArrived, let translatedImage {
+            setTranslatedImage(translatedImage, animated: true)
+        } else {
+            imageView.image = translatedImage
+        }
+        if photoChanged {
+            canvasSize = .zero
+            didSetInitialGeometry = false
+            setNeedsLayout()
+        }
+        rebuildAccessibilityElements()
+    }
+
+    func invalidateAsyncWork() {
+        selectionTask?.cancel()
+        selectionTask = nil
+        invalidateSelection()
+    }
+
+    private func invalidateSelection() {
+        selectionTask?.cancel()
+        selectionTask = nil
+        clearSelection()
+    }
+
+    func setTranslatedImage(_ image: UIImage, animated: Bool) {
+        translatedImage = image
+        guard mode == .translation else { return }
+        let changes = { self.imageView.image = image }
+        if animated {
+            UIView.transition(
+                with: imageView,
+                duration: 0.18,
+                options: [.transitionCrossDissolve, .allowAnimatedContent],
+                animations: changes
+            )
+        } else {
+            changes()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scrollView.frame = bounds
+        guard let image = originalImage else { return }
+        let nextCanvas = OverlayGeometry.aspectFillSize(imageSize: image.size, in: bounds.size)
+        if nextCanvas != canvasSize {
+            let preservedScale = scrollView.zoomScale
+            let preservedCenter = CGPoint(
+                x: scrollView.contentOffset.x + bounds.width / 2,
+                y: scrollView.contentOffset.y + bounds.height / 2
+            )
+            canvasSize = nextCanvas
+            scrollView.zoomScale = 1
+            contentView.frame = CGRect(origin: .zero, size: canvasSize)
+            imageView.frame = contentView.bounds
+            highlightLayer.frame = contentView.bounds
+            scrollView.contentSize = canvasSize
+            let minimum = OverlayGeometry.minimumZoomScale(
+                canvasSize: canvasSize, viewportSize: bounds.size
+            )
+            scrollView.minimumZoomScale = minimum
+            scrollView.contentInset = UIEdgeInsets(
+                top: bounds.height / 2,
+                left: bounds.width / 2,
+                bottom: bounds.height / 2,
+                right: bounds.width / 2
+            )
+            if didSetInitialGeometry {
+                scrollView.zoomScale = min(max(preservedScale, minimum), 5)
+                scrollView.contentOffset = CGPoint(
+                    x: preservedCenter.x - bounds.width / 2,
+                    y: preservedCenter.y - bounds.height / 2
+                )
+            } else {
+                let imageIsLandscape = canvasSize.width > canvasSize.height
+                let viewportIsLandscape = bounds.width > bounds.height
+                let initial = imageIsLandscape == viewportIsLandscape ? 1 : minimum
+                scrollView.zoomScale = initial
+                scrollView.contentOffset = CGPoint(
+                    x: (canvasSize.width * initial - bounds.width) / 2,
+                    y: (canvasSize.height * initial - bounds.height) / 2
+                )
+                didSetInitialGeometry = true
+            }
+            updateSelectionAppearance()
+            rebuildAccessibilityElements()
+        }
+        let cardHeight = min(218, max(170, bounds.height * 0.28))
+        card.frame = CGRect(
+            x: 14,
+            y: bounds.height - cardHeight - safeAreaInsets.bottom - 12,
+            width: bounds.width - 28,
+            height: cardHeight
+        )
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { contentView }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { rebuildAccessibilityElements() }
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { rebuildAccessibilityElements() }
+
+    func scrollViewDidEndZooming(
+        _ scrollView: UIScrollView,
+        with view: UIView?,
+        atScale scale: CGFloat
+    ) {
+        if abs(scale - scrollView.minimumZoomScale) < 0.02 {
+            scrollView.contentOffset = CGPoint(
+                x: (canvasSize.width * scale - bounds.width) / 2,
+                y: (canvasSize.height * scale - bounds.height) / 2
+            )
+        }
+        rebuildAccessibilityElements()
+    }
+
+    private var orderedTokens: [(token: RecognizedTextToken, blockID: UUID)] {
+        blocks.flatMap { block in block.tokens.map { ($0, block.id) } }
+    }
+
+    @objc private func didTap(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: contentView)
+        if mode == .translation {
+            guard let block = block(at: point) else { clearSelection(); return }
+            selection = nil
+            updateSelectionAppearance()
+            card.show(block: block)
+            rebuildAccessibilityElements()
             return
         }
-        coordinator.canvasSize = canvasSize
-        coordinator.viewportSize = viewportSize
-
-        // 先回到 1×，transform 恢复恒等，之后写 frame 才有定义。
-        scrollView.zoomScale = 1
-        coordinator.hostingController.view.frame = CGRect(origin: .zero, size: canvasSize)
-        scrollView.contentSize = canvasSize
-
-        // 最小倍率退到 aspectFit，用户总能缩到整张照片完整出现。
-        let minimumScale = OverlayGeometry.minimumZoomScale(
-            canvasSize: canvasSize,
-            viewportSize: viewportSize
-        )
-        scrollView.minimumZoomScale = minimumScale
-
-        // 常态下 1× 就是与取景一致的 aspectFill 构图。但**横幅的照片放进竖视口**时
-        // （相册里挑一张横图就是这样），aspectFill 会把大半张图推到屏幕外——
-        // 一进来只剩中间一条，译文块大多在屏幕外，得先手动缩小才看得见。
-        // 朝向相反时直接以 aspectFit 开场。
-        //
-        // 相机拍的照片恒为竖幅（取景与照片都固定 90°，横持拍到的是一张躺着的竖图），
-        // 所以这条分支只有相册路径走得到。
-        let imageIsLandscape = canvasSize.width > canvasSize.height
-        let viewportIsLandscape = viewportSize.width > viewportSize.height
-        let initialScale = imageIsLandscape == viewportIsLandscape ? 1 : minimumScale
-        scrollView.zoomScale = initialScale
-
-        // 每边留半屏，UIScrollView 自己的边界便正好是“照片任意边到屏幕中心”；
-        // 关闭 bounce 后到这里就停，不会继续把画布拖进黑色虚空。
-        scrollView.contentInset = UIEdgeInsets(
-            top: viewportSize.height / 2,
-            left: viewportSize.width / 2,
-            bottom: viewportSize.height / 2,
-            right: viewportSize.width / 2
-        )
-        // 居中要按**缩放后**的画布算：setZoomScale 之后 contentSize 已是 canvasSize × 倍率。
-        scrollView.contentOffset = CGPoint(
-            x: (canvasSize.width * initialScale - viewportSize.width) / 2,
-            y: (canvasSize.height * initialScale - viewportSize.height) / 2
-        )
+        guard let index = tokenIndex(at: point) else { clearSelection(); return }
+        select(index...index, translate: true)
     }
 
-    static func dismantleUIView(_ scrollView: UIScrollView, coordinator: Coordinator) {
-        coordinator.hostingController.view.removeFromSuperview()
-        scrollView.delegate = nil
+    @objc private func didLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard mode == .original else { return }
+        let point = gesture.location(in: contentView)
+        guard let index = tokenIndex(at: point) ?? nearestTokenIndex(to: point) else { return }
+        switch gesture.state {
+        case .began:
+            select(index...index, translate: false)
+        case .changed:
+            guard let current = selection else { return }
+            select(min(current.lowerBound, index)...max(current.lowerBound, index), translate: false)
+        case .ended:
+            translateCurrentSelection()
+        default:
+            break
+        }
     }
 
-    final class Coordinator: NSObject, UIScrollViewDelegate {
-        let hostingController: UIHostingController<Content>
-        lazy var tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTap(_:)))
-        var onTap: (CGPoint) -> Void
-        var canvasSize: CGSize = .zero
-        var viewportSize: CGSize = .zero
+    private func select(_ range: ClosedRange<Int>, translate: Bool) {
+        selection = range
+        updateSelectionAppearance()
+        let text = selectedText(in: range)
+        card.showSelection(source: text)
+        rebuildAccessibilityElements()
+        if translate { translateSelection(text) }
+    }
 
-        init(content: Content, onTap: @escaping (CGPoint) -> Void) {
-            hostingController = UIHostingController(rootView: content)
-            self.onTap = onTap
-        }
+    private func translateCurrentSelection() {
+        guard let selection else { return }
+        translateSelection(selectedText(in: selection))
+    }
 
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            hostingController.view
+    private func translateSelection(_ text: String) {
+        guard let translate = actions?.translateSelection else { return }
+        let isSelectionCurrent = actions?.isSelectionCurrent
+        selectionTask?.cancel()
+        selectionRevision += 1
+        let revision = selectionRevision
+        let generation = currentGeneration
+        card.showSelection(source: text)
+        selectionTask = Task { [weak self] in
+            let result = await translate(text)
+            guard let self,
+                  !Task.isCancelled,
+                  revision == self.selectionRevision,
+                  generation == self.currentGeneration,
+                  isSelectionCurrent?() == true else { return }
+            card.finishSelection(result)
+            selectionTask = nil
         }
+    }
 
-        @objc private func didTap(_ gesture: UITapGestureRecognizer) {
-            guard gesture.state == .ended else { return }
-            onTap(gesture.location(in: hostingController.view))
+    private func selectedText(in range: ClosedRange<Int>) -> String {
+        let tokens = orderedTokens
+        return range.compactMap { tokens.indices.contains($0) ? tokens[$0].token.text : nil }
+            .joined(separator: " ")
+    }
+
+    private func block(at point: CGPoint) -> PhotoTranslationController.TranslatedBlock? {
+        let rect = CGRect(origin: .zero, size: canvasSize)
+        return blocks.reversed().first { block in
+            let placement = OverlayGeometry.place(block.quad, in: rect)
+            return OverlayGeometry.contains(
+                point,
+                inRotatedRectAt: placement.center,
+                size: placement.size,
+                angle: placement.angle
+            )
         }
+    }
+
+    private func tokenIndex(at point: CGPoint) -> Int? {
+        let rect = CGRect(origin: .zero, size: canvasSize)
+        return orderedTokens.indices.reversed().first { index in
+            let placement = OverlayGeometry.place(orderedTokens[index].token.quad, in: rect)
+            return OverlayGeometry.contains(
+                point,
+                inRotatedRectAt: placement.center,
+                size: CGSize(
+                    width: max(placement.size.width, 18 / max(scrollView.zoomScale, 0.1)),
+                    height: max(placement.size.height, 18 / max(scrollView.zoomScale, 0.1))
+                ),
+                angle: placement.angle
+            )
+        }
+    }
+
+    private func nearestTokenIndex(to point: CGPoint) -> Int? {
+        let rect = CGRect(origin: .zero, size: canvasSize)
+        return orderedTokens.indices.min { lhs, rhs in
+            let left = OverlayGeometry.place(orderedTokens[lhs].token.quad, in: rect).center
+            let right = OverlayGeometry.place(orderedTokens[rhs].token.quad, in: rect).center
+            return hypot(left.x - point.x, left.y - point.y)
+                < hypot(right.x - point.x, right.y - point.y)
+        }
+    }
+
+    private func moveHandle(start: Bool, to point: CGPoint) {
+        guard let selection, let index = nearestTokenIndex(to: point) else { return }
+        let range = start
+            ? min(index, selection.upperBound)...selection.upperBound
+            : selection.lowerBound...max(index, selection.lowerBound)
+        select(range, translate: false)
+    }
+
+    private func adjustHandle(start: Bool, direction: UIAccessibilityScrollDirection) {
+        guard let selection else { return }
+        let count = orderedTokens.count
+        let delta = direction == .right || direction == .down ? 1 : -1
+        if start {
+            let next = min(max(0, selection.lowerBound + delta), selection.upperBound)
+            select(next...selection.upperBound, translate: true)
+        } else {
+            let next = min(max(selection.lowerBound, selection.upperBound + delta), max(0, count - 1))
+            select(selection.lowerBound...next, translate: true)
+        }
+    }
+
+    private func clearSelection() {
+        selectionRevision += 1
+        selection = nil
+        card.dismiss()
+        updateSelectionAppearance()
+        rebuildAccessibilityElements()
+    }
+
+    private func updateSelectionAppearance() {
+        guard let selection else {
+            highlightLayer.path = nil
+            startHandle.isHidden = true
+            endHandle.isHidden = true
+            return
+        }
+        let tokens = orderedTokens
+        let rect = CGRect(origin: .zero, size: canvasSize)
+        let path = UIBezierPath()
+        for index in selection where tokens.indices.contains(index) {
+            let quad = tokens[index].token.quad
+            path.move(to: OverlayGeometry.point(quad.topLeft, in: rect))
+            path.addLine(to: OverlayGeometry.point(quad.topRight, in: rect))
+            path.addLine(to: OverlayGeometry.point(quad.bottomRight, in: rect))
+            path.addLine(to: OverlayGeometry.point(quad.bottomLeft, in: rect))
+            path.close()
+        }
+        highlightLayer.path = path.cgPath
+        guard tokens.indices.contains(selection.lowerBound),
+              tokens.indices.contains(selection.upperBound) else { return }
+        startHandle.center = OverlayGeometry.point(
+            tokens[selection.lowerBound].token.quad.bottomLeft,
+            in: rect
+        )
+        endHandle.center = OverlayGeometry.point(
+            tokens[selection.upperBound].token.quad.bottomRight,
+            in: rect
+        )
+        startHandle.isHidden = false
+        endHandle.isHidden = false
+    }
+
+    private func rebuildAccessibilityElements() {
+        let rect = CGRect(origin: .zero, size: canvasSize)
+        let items: [CanvasAccessibilityElement]
+        if mode == .translation {
+            items = blocks.enumerated().map { index, block in
+                let element = CanvasAccessibilityElement(accessibilityContainer: self)
+                element.accessibilityLabel = block.source
+                element.accessibilityValue = block.displayText
+                element.accessibilityTraits = .button
+                element.accessibilityIdentifier = "camera.block.\(index)"
+                element.accessibilityFrameInContainerSpace = contentView.convert(
+                    OverlayGeometry.place(block.quad, in: rect).boundingRect,
+                    to: self
+                )
+                element.onActivate = { [weak self] in
+                    self?.card.show(block: block)
+                    return true
+                }
+                return element
+            }
+        } else {
+            items = orderedTokens.enumerated().map { index, item in
+                let element = CanvasAccessibilityElement(accessibilityContainer: self)
+                element.accessibilityLabel = item.token.text
+                element.accessibilityTraits = .button
+                element.accessibilityIdentifier = "camera.token.\(index)"
+                element.accessibilityFrameInContainerSpace = contentView.convert(
+                    OverlayGeometry.place(item.token.quad, in: rect).boundingRect,
+                    to: self
+                )
+                element.onActivate = { [weak self] in
+                    self?.select(index...index, translate: true)
+                    return true
+                }
+                return element
+            }
+        }
+        var visibleExtras: [Any] = []
+        if !startHandle.isHidden { visibleExtras.append(startHandle) }
+        if !endHandle.isHidden { visibleExtras.append(endHandle) }
+        if !card.isHidden { visibleExtras.append(card) }
+        accessibilityElements = items.map { $0 as Any } + visibleExtras
     }
 }
 
-private struct TranslationBlockSticker: View {
-    let block: PhotoTranslationController.TranslatedBlock
-    let index: Int
-    let placement: OverlayGeometry.Placement
-    let palette: BlockPalette
-    let onTap: () -> Void
-
-    /// 字号按单行高的这个比例起算（西文 cap height 约占行高七成半），
-    /// 塞不下再由 minimumScaleFactor 收缩。
-    private static let capHeightRatio: CGFloat = 0.74
-    /// 贴片相对原文框的外扩量（按行高算）。原文的抗锯齿边缘会溢出 Vision 给的框，
-    /// 不外扩会露出一圈原文的毛边。
-    private static let coverInsetRatio: CGFloat = 0.16
-
-    private var lineHeight: CGFloat {
-        max(placement.size.height / CGFloat(max(block.lineCount, 1)), 1)
-    }
-
-    private var inset: CGFloat {
-        lineHeight * Self.coverInsetRatio
-    }
-
-    static func contains(
-        _ point: CGPoint,
-        block: PhotoTranslationController.TranslatedBlock,
-        placement: OverlayGeometry.Placement
-    ) -> Bool {
-        let lineHeight = max(placement.size.height / CGFloat(max(block.lineCount, 1)), 1)
-        let inset = lineHeight * coverInsetRatio
-        return OverlayGeometry.contains(
-            point,
-            inRotatedRectAt: placement.center,
-            size: CGSize(
-                width: placement.size.width + inset * 2,
-                height: placement.size.height + inset * 2
-            ),
-            angle: placement.angle
+private extension OverlayGeometry.Placement {
+    var boundingRect: CGRect {
+        CGRect(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2,
+            width: size.width,
+            height: size.height
         )
     }
+}
 
-    var body: some View {
-        Text(block.displayText)
-            .font(.system(size: lineHeight * Self.capHeightRatio, weight: .medium))
-            .foregroundStyle(palette.foreground)
-            // **不按原文行数封顶。** 译文常比原文长（中译英尤其），而框宽是原文的宽度；
-            // 锁死在原文行数上，塞不下的部分会被直接截掉——真机上「执行标准：QB/T 1643-98 使用」
-            // 后面就这么没了。放开行数、让它靠缩放去适配：宁可字小一点，也不能少半句话。
-            .lineLimit(nil)
-            .minimumScaleFactor(0.35)
-            .multilineTextAlignment(.leading)
-            .opacity(block.isPending ? 0.55 : 1)
-            .frame(
-                width: max(placement.size.width, 1),
-                height: max(placement.size.height, 1),
-                alignment: .leading
-            )
-            .padding(inset)
-            .background(palette.background, in: RoundedRectangle(cornerRadius: inset * 2, style: .continuous))
-            .overlay(alignment: .topTrailing) {
-                if block.failed {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: max(lineHeight * 0.42, 9), weight: .bold))
-                        .foregroundStyle(AppTheme.alertOnPhoto)
-                        .padding(inset * 0.5)
-                }
-            }
-            .rotationEffect(placement.angle)
-            .position(placement.center)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(block.source)
-            .accessibilityValue(block.displayText)
-            .accessibilityHint(String(localized: "轻点查看原文与译文对照"))
-            .accessibilityAction { onTap() }
-            .accessibilityIdentifier("camera.block.\(index)")
+@MainActor
+private final class CanvasAccessibilityElement: UIAccessibilityElement {
+    var onActivate: (() -> Bool)?
+    override func accessibilityActivate() -> Bool { onActivate?() ?? false }
+}
+
+@MainActor
+private final class SelectionHandleView: UIView {
+    var onMove: ((CGPoint) -> Void)?
+    var onAdjust: ((UIAccessibilityScrollDirection) -> Void)?
+
+    init(label: String) {
+        super.init(frame: CGRect(x: 0, y: 0, width: 28, height: 28))
+        backgroundColor = .systemBlue
+        layer.cornerRadius = 14
+        layer.borderWidth = 2
+        layer.borderColor = UIColor.white.cgColor
+        isAccessibilityElement = true
+        accessibilityLabel = label
+        accessibilityTraits = [.adjustable]
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(didPan(_:)))
+        addGestureRecognizer(pan)
     }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func didPan(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .began || gesture.state == .changed else { return }
+        onMove?(gesture.location(in: superview))
+    }
+
+    override func accessibilityIncrement() { onAdjust?(.right) }
+    override func accessibilityDecrement() { onAdjust?(.left) }
+}
+
+@MainActor
+private final class PhotoSelectionCardView: UIVisualEffectView {
+    private let sourceLabel = UILabel()
+    private let translationLabel = UILabel()
+    private let buttonStack = UIStackView()
+    private var source = ""
+    private var translation = ""
+    private var blockID: UUID?
+    private var failure: TranslationError?
+    var onClose: (() -> Void)?
+    var onCopy: ((String) -> Void)?
+    var onSpeak: ((String, Bool) -> Void)?
+    var onSave: ((String, String) -> Void)?
+    var onRetryBlock: ((UUID) -> Void)?
+    var onRetrySelection: ((String) -> Void)?
+
+    private lazy var copyButton = button("doc.on.doc", action: #selector(copyText))
+    private lazy var speakButton = button("speaker.wave.2", action: #selector(speakText))
+    private lazy var saveButton = button("clock.arrow.circlepath", action: #selector(saveText))
+    private lazy var retryButton = button("arrow.clockwise", action: #selector(retry))
+    private lazy var closeButton = button("xmark", action: #selector(close))
+
+    init() {
+        super.init(effect: UIBlurEffect(style: .systemChromeMaterial))
+        layer.cornerRadius = 24
+        clipsToBounds = true
+        accessibilityIdentifier = "camera.selectionCard"
+        let textStack = UIStackView(arrangedSubviews: [sourceLabel, translationLabel])
+        textStack.axis = .vertical
+        textStack.spacing = 8
+        sourceLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        sourceLabel.textColor = .secondaryLabel
+        sourceLabel.numberOfLines = 2
+        sourceLabel.accessibilityIdentifier = "camera.selectionCard.source"
+        translationLabel.font = .systemFont(ofSize: 19, weight: .regular)
+        translationLabel.numberOfLines = 3
+        translationLabel.accessibilityIdentifier = "camera.selectionCard.translation"
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 16
+        copyButton.accessibilityLabel = String(localized: "复制译文")
+        copyButton.accessibilityIdentifier = "camera.selectionCard.copy"
+        speakButton.accessibilityLabel = String(localized: "朗读译文")
+        speakButton.accessibilityIdentifier = "camera.selectionCard.speak"
+        saveButton.accessibilityLabel = String(localized: "存入历史记录")
+        saveButton.accessibilityIdentifier = "camera.selectionCard.save"
+        retryButton.accessibilityLabel = String(localized: "重试")
+        retryButton.accessibilityIdentifier = "camera.selectionCard.retry"
+        closeButton.accessibilityLabel = String(localized: "关闭")
+        closeButton.accessibilityIdentifier = "camera.selectionCard.close"
+        [copyButton, speakButton, saveButton, retryButton, closeButton].forEach {
+            buttonStack.addArrangedSubview($0)
+        }
+        let stack = UIStackView(arrangedSubviews: [textStack, buttonStack])
+        stack.axis = .vertical
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -14),
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show(block: PhotoTranslationController.TranslatedBlock) {
+        source = block.source
+        translation = block.translation
+        blockID = block.id
+        failure = block.failure
+        sourceLabel.text = block.source
+        if let failure = block.failure {
+            translationLabel.text = failure.errorDescription ?? String(localized: "翻译失败，请重试")
+        } else if block.isPending {
+            translationLabel.text = String(localized: "正在翻译…")
+        } else {
+            translationLabel.text = block.translation
+        }
+        applyState()
+        isHidden = false
+    }
+
+    func showSelection(source: String) {
+        self.source = source
+        translation = ""
+        blockID = nil
+        failure = nil
+        sourceLabel.text = source
+        translationLabel.text = String(localized: "正在翻译…")
+        applyState()
+        isHidden = false
+    }
+
+    func refreshPresentedBlock(
+        from blocks: [PhotoTranslationController.TranslatedBlock]
+    ) {
+        guard let blockID else { return }
+        guard let block = blocks.first(where: { $0.id == blockID }) else {
+            dismiss()
+            return
+        }
+        show(block: block)
+    }
+
+    func dismiss() {
+        blockID = nil
+        failure = nil
+        isHidden = true
+    }
+
+    func finishSelection(_ result: Result<String, TranslationError>) {
+        switch result {
+        case .success(let text):
+            translation = text
+            failure = nil
+            translationLabel.text = text
+        case .failure(let error):
+            translation = ""
+            failure = error
+            translationLabel.text = error.errorDescription ?? String(localized: "翻译失败，请重试")
+        }
+        applyState()
+    }
+
+    private func applyState() {
+        let hasTranslation = !translation.isEmpty && failure == nil
+        copyButton.isEnabled = hasTranslation
+        speakButton.isEnabled = hasTranslation
+        saveButton.isEnabled = hasTranslation
+        retryButton.isHidden = failure == nil
+    }
+
+    private func button(_ systemName: String, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: systemName), for: .normal)
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    @objc private func copyText() { onCopy?(translation.isEmpty ? source : translation) }
+    @objc private func speakText() { onSpeak?(translation.isEmpty ? source : translation, !translation.isEmpty) }
+    @objc private func saveText() { onSave?(source, translation) }
+    @objc private func retry() {
+        if let blockID { onRetryBlock?(blockID) } else { onRetrySelection?(source) }
+    }
+    @objc private func close() { onClose?() }
 }

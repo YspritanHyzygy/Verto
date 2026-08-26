@@ -48,6 +48,7 @@
 		01A000000000000000000512 /* OCRImageCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000412 /* OCRImageCanvas.swift */; };
 		01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000413 /* PaddleTextRecognitionService.swift */; };
 		01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000414 /* RoutingTextRecognitionService.swift */; };
+		01A000000000000000000601 /* NeuralReconstructionCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000600 /* NeuralReconstructionCatalog.swift */; };
 		01A000000000000000000506 /* TranslationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000406 /* TranslationOverlay.swift */; };
 		01B000000000000000000101 /* VertoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B000000000000000000001 /* VertoUITests.swift */; };
 		01C000000000000000000101 /* TranslationSessionDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000001 /* TranslationSessionDraftTests.swift */; };
@@ -66,6 +67,7 @@
 		01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000014 /* OCRImageCanvasTests.swift */; };
 		01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000015 /* TextDetectionPostProcessTests.swift */; };
 		01C000000000000000000115 /* CTCDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000016 /* CTCDecoderTests.swift */; };
+		01C000000000000000000603 /* NeuralReconstructionCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C000000000000000000602 /* NeuralReconstructionCatalogTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -129,6 +131,7 @@
 		01A000000000000000000412 /* OCRImageCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvas.swift; sourceTree = "<group>"; };
 		01A000000000000000000413 /* PaddleTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleTextRecognitionService.swift; sourceTree = "<group>"; };
 		01A000000000000000000414 /* RoutingTextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingTextRecognitionService.swift; sourceTree = "<group>"; };
+		01A000000000000000000600 /* NeuralReconstructionCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralReconstructionCatalog.swift; sourceTree = "<group>"; };
 		01A000000000000000000406 /* TranslationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationOverlay.swift; sourceTree = "<group>"; };
 		01B000000000000000000001 /* VertoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VertoUITests.swift; sourceTree = "<group>"; };
 		01B000000000000000000011 /* VertoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -148,6 +151,7 @@
 		01C000000000000000000014 /* OCRImageCanvasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRImageCanvasTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000015 /* TextDetectionPostProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextDetectionPostProcessTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000016 /* CTCDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTCDecoderTests.swift; sourceTree = "<group>"; };
+		01C000000000000000000602 /* NeuralReconstructionCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralReconstructionCatalogTests.swift; sourceTree = "<group>"; };
 		01C000000000000000000011 /* VertoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VertoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -262,6 +266,7 @@
 				01A000000000000000000412 /* OCRImageCanvas.swift */,
 				01A000000000000000000413 /* PaddleTextRecognitionService.swift */,
 				01A000000000000000000414 /* RoutingTextRecognitionService.swift */,
+				01A000000000000000000600 /* NeuralReconstructionCatalog.swift */,
 				01A000000000000000000402 /* VisionTextRecognitionService.swift */,
 				01A000000000000000000403 /* PhotoCaptureSource.swift */,
 				01A000000000000000000404 /* CannedPhotoCapture.swift */,
@@ -297,6 +302,7 @@
 				01C000000000000000000014 /* OCRImageCanvasTests.swift */,
 				01C000000000000000000015 /* TextDetectionPostProcessTests.swift */,
 				01C000000000000000000016 /* CTCDecoderTests.swift */,
+				01C000000000000000000602 /* NeuralReconstructionCatalogTests.swift */,
 			);
 			path = VertoTests;
 			sourceTree = "<group>";
@@ -474,6 +480,7 @@
 				01A000000000000000000512 /* OCRImageCanvas.swift in Sources */,
 				01A000000000000000000513 /* PaddleTextRecognitionService.swift in Sources */,
 				01A000000000000000000514 /* RoutingTextRecognitionService.swift in Sources */,
+				01A000000000000000000601 /* NeuralReconstructionCatalog.swift in Sources */,
 				01A000000000000000000506 /* TranslationOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -506,6 +513,7 @@
 				01C000000000000000000113 /* OCRImageCanvasTests.swift in Sources */,
 				01C000000000000000000114 /* TextDetectionPostProcessTests.swift in Sources */,
 				01C000000000000000000115 /* CTCDecoderTests.swift in Sources */,
+				01C000000000000000000603 /* NeuralReconstructionCatalogTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -106,11 +106,14 @@ final class CameraCaptureSource: PhotoCaptureSource {
 
     @ObservationIgnored private let engine = CaptureEngine()
     @ObservationIgnored private var flashEnabled = false
+    @ObservationIgnored private var activationGeneration = 0
     /// 拍照结果经 delegate 回调，而 AVCapturePhotoOutput 不持有 delegate——
     /// 不自己留一份，delegate 会在 await 期间被释放，回调永不到达。
     @ObservationIgnored private var pendingCaptures: [UUID: PhotoCaptureDelegate] = [:]
 
     func start() async {
+        activationGeneration += 1
+        let activation = activationGeneration
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             break
@@ -126,6 +129,7 @@ final class CameraCaptureSource: PhotoCaptureSource {
             markUnavailable(permissionDenied: true)
             return
         }
+        guard activation == activationGeneration, !Task.isCancelled else { return }
         isPermissionDenied = false
 
         engine.setStateHandler { [weak self] state in
@@ -134,6 +138,7 @@ final class CameraCaptureSource: PhotoCaptureSource {
             }
         }
         let readiness = await engine.prepare()
+        guard activation == activationGeneration, !Task.isCancelled else { return }
         guard readiness.isReady else {
             markUnavailable(permissionDenied: false)
             return
@@ -154,10 +159,12 @@ final class CameraCaptureSource: PhotoCaptureSource {
             }
             previewLayer = layer
         }
+        guard activation == activationGeneration, !Task.isCancelled else { return }
         engine.start()
     }
 
     func stop() {
+        activationGeneration += 1
         engine.stop()
     }
 

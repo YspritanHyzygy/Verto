@@ -79,6 +79,193 @@ enum OCRModelInstallError: LocalizedError, Equatable {
     }
 }
 
+/// 所有可下载 Core ML 资产共用的低层契约。具体模型负责解包后的文件名、编译、
+/// 张量校验和产品状态；这里集中处理下载、长度、SHA、Apple Archive 与原子激活。
+struct ModelArtifactDescriptor: Sendable {
+    let id: String
+    let archiveURL: URL
+    let archiveName: String
+    let downloadBytes: Int64
+    let sha256: String
+    let installDirectory: URL
+}
+
+struct ModelArtifactInstaller: Sendable {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func install(
+        _ descriptor: ModelArtifactDescriptor,
+        onProgress: @escaping @Sendable (Double) -> Void,
+        prepare: @escaping @Sendable (_ unpacked: URL, _ staging: URL) async throws -> Void
+    ) async throws {
+        let fm = FileManager.default
+        let scratch = fm.temporaryDirectory
+            .appendingPathComponent("model-artifact-\(descriptor.id)-\(UUID().uuidString)")
+        try fm.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: scratch) }
+
+        let archive = scratch.appendingPathComponent(descriptor.archiveName)
+        try await download(descriptor, to: archive, onProgress: onProgress)
+        try Task.checkCancellation()
+        try Self.verifyChecksum(of: archive, expected: descriptor.sha256)
+
+        let unpacked = scratch.appendingPathComponent("unpacked")
+        try fm.createDirectory(at: unpacked, withIntermediateDirectories: true)
+        try Self.extract(archive: archive, to: unpacked)
+        try Task.checkCancellation()
+
+        let root = descriptor.installDirectory
+        let staging = root.deletingLastPathComponent()
+            .appendingPathComponent("\(root.lastPathComponent).staging-\(UUID().uuidString)")
+        try? fm.removeItem(at: staging)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        do {
+            try await prepare(unpacked, staging)
+            var staged = staging
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? staged.setResourceValues(values)
+            try Self.activate(staging: staging, at: root)
+        } catch {
+            try? fm.removeItem(at: staging)
+            throw error
+        }
+    }
+
+    func diskUsage(at root: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]
+        ) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            let size = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
+                .totalFileAllocatedSize
+            total += Int64(size ?? 0)
+        }
+        return total
+    }
+
+    private func download(
+        _ descriptor: ModelArtifactDescriptor,
+        to destination: URL,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        let delegate = DownloadProgressDelegate(onProgress: onProgress)
+        let temporary: URL
+        let response: URLResponse
+        do {
+            (temporary, response) = try await session.download(
+                from: descriptor.archiveURL, delegate: delegate
+            )
+        } catch let error as URLError where error.code == .cancelled || Task.isCancelled {
+            throw CancellationError()
+        } catch {
+            throw OCRModelInstallError.network
+        }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            try? FileManager.default.removeItem(at: temporary)
+            throw OCRModelInstallError.network
+        }
+        try? FileManager.default.removeItem(at: destination)
+        do {
+            try FileManager.default.moveItem(at: temporary, to: destination)
+        } catch {
+            throw OCRModelInstallError.insufficientStorage
+        }
+        onProgress(1)
+        let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size])
+            as? Int64
+        guard size == descriptor.downloadBytes else { throw OCRModelInstallError.network }
+    }
+
+    private final class DownloadProgressDelegate: NSObject, URLSessionTaskDelegate,
+                                                   URLSessionDownloadDelegate, @unchecked Sendable {
+        private let onProgress: @Sendable (Double) -> Void
+
+        init(onProgress: @escaping @Sendable (Double) -> Void) {
+            self.onProgress = onProgress
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            downloadTask: URLSessionDownloadTask,
+            didWriteData bytesWritten: Int64,
+            totalBytesWritten: Int64,
+            totalBytesExpectedToWrite: Int64
+        ) {
+            guard totalBytesExpectedToWrite > 0 else { return }
+            onProgress(min(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), 0.99))
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            downloadTask: URLSessionDownloadTask,
+            didFinishDownloadingTo location: URL
+        ) {}
+    }
+
+    static func verifyChecksum(of url: URL, expected: String) throws {
+        guard try checksum(of: url) == expected else {
+            throw OCRModelInstallError.checksumMismatch
+        }
+    }
+
+    private static func checksum(of url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func extract(archive: URL, to directory: URL) throws {
+        guard let source = ArchiveByteStream.fileStream(
+                path: FilePath(archive.path), mode: .readOnly,
+                options: [], permissions: FilePermissions(rawValue: 0o644)),
+              let decompressed = ArchiveByteStream.decompressionStream(readingFrom: source),
+              let decoded = ArchiveStream.decodeStream(readingFrom: decompressed),
+              let extraction = ArchiveStream.extractStream(extractingTo: FilePath(directory.path))
+        else {
+            throw OCRModelInstallError.extractionFailed
+        }
+        defer {
+            try? extraction.close()
+            try? decoded.close()
+            try? decompressed.close()
+            try? source.close()
+        }
+        do {
+            _ = try ArchiveStream.process(readingFrom: decoded, writingTo: extraction)
+        } catch {
+            throw OCRModelInstallError.extractionFailed
+        }
+    }
+
+    static func activate(staging: URL, at root: URL) throws {
+        let fm = FileManager.default
+        let parent = root.deletingLastPathComponent()
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        guard fm.fileExists(atPath: root.path) else {
+            try fm.moveItem(at: staging, to: root)
+            return
+        }
+        let backupName = "\(root.lastPathComponent).previous-\(UUID().uuidString)"
+        _ = try fm.replaceItemAt(
+            root, withItemAt: staging, backupItemName: backupName,
+            options: [.usingNewMetadataOnly]
+        )
+        try? fm.removeItem(at: parent.appendingPathComponent(backupName))
+    }
+}
+
 /// 下载并安装一档模型。抽成协议是为了让测试能在不联网的前提下驱动状态机，
 /// 罐头实现放在 `CannedOCRModelInstaller`（仅 DEBUG）。
 protocol OCRModelPackInstalling: Sendable {
@@ -104,10 +291,10 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
     private static let compiledDetector = "Detector.mlmodelc"
     private static let compiledRecognizer = "Recognizer.mlmodelc"
 
-    private let session: URLSession
+    private let artifactInstaller: ModelArtifactInstaller
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    init(artifactInstaller: ModelArtifactInstaller = ModelArtifactInstaller()) {
+        self.artifactInstaller = artifactInstaller
     }
 
     func installed(_ tier: OCRModelTier) -> InstalledOCRModel? {
@@ -136,155 +323,53 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
     }
 
     func diskUsage(_ tier: OCRModelTier) -> Int64 {
-        guard let root = try? OCRModelPack.installDirectory(for: tier),
-              let enumerator = FileManager.default.enumerator(
-                at: root, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]
-              ) else {
-            return 0
-        }
-        var total: Int64 = 0
-        for case let url as URL in enumerator {
-            let size = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
-                .totalFileAllocatedSize
-            total += Int64(size ?? 0)
-        }
-        return total
+        guard let root = try? OCRModelPack.installDirectory(for: tier) else { return 0 }
+        return artifactInstaller.diskUsage(at: root)
     }
 
     func install(
         _ tier: OCRModelTier,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> InstalledOCRModel {
-        let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ocr-install-\(tier.rawValue)-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: scratch) }
-
-        let archive = scratch.appendingPathComponent(tier.archiveName)
-        try await download(tier, to: archive, onProgress: onProgress)
-        try Task.checkCancellation()
-
-        try Self.verifyChecksum(of: archive, expected: tier.sha256)
-
-        let unpacked = scratch.appendingPathComponent("unpacked")
-        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        try extract(archive: archive, to: unpacked)
-        try Task.checkCancellation()
-
-        return try await compileAndInstall(tier: tier, from: unpacked)
-    }
-
-    // MARK: - 下载
-
-    private func download(
-        _ tier: OCRModelTier,
-        to destination: URL,
-        onProgress: @escaping @Sendable (Double) -> Void
-    ) async throws {
-        // 用 download(from:delegate:) 而不是 bytes(from:)：后者是逐**字节**的
-        // AsyncSequence，medium 档 47MB 就是四千七百万次异步迭代，实测只有个位数
-        // MB/s。download 直接落临时文件，进度经 delegate 回调。
-        let delegate = DownloadProgressDelegate(onProgress: onProgress)
-        let (temporary, response) = try await session.download(
-            from: tier.archiveURL, delegate: delegate
+        let root = try OCRModelPack.installDirectory(for: tier)
+        let descriptor = ModelArtifactDescriptor(
+            id: "ocr-\(tier.rawValue)-v\(OCRModelPack.version)",
+            archiveURL: tier.archiveURL,
+            archiveName: tier.archiveName,
+            downloadBytes: tier.downloadBytes,
+            sha256: tier.sha256,
+            installDirectory: root
         )
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            try? FileManager.default.removeItem(at: temporary)
-            throw OCRModelInstallError.network
-        }
-        // download 返回后临时文件随时可能被系统回收，必须立刻挪走。
-        try? FileManager.default.removeItem(at: destination)
         do {
-            try FileManager.default.moveItem(at: temporary, to: destination)
+            try await artifactInstaller.install(descriptor, onProgress: onProgress) {
+                unpacked, staging in
+                try await Self.compile(tier: tier, from: unpacked, into: staging)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as OCRModelInstallError {
+            throw error
         } catch {
-            throw OCRModelInstallError.insufficientStorage
+            // 下载阶段已经把网络、校验、解包和空间不足分成明确错误；剩余原始
+            // 文件系统/Core ML 错误都发生在准备或原子激活阶段，沿用旧版安装失败语义。
+            throw OCRModelInstallError.compilationFailed
         }
-        onProgress(1)
-
-        let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size]) as? Int64
-        guard size == tier.downloadBytes else {
-            // 长度对不上说明下到一半断了，或者服务端换了文件——两种都不能装。
-            throw OCRModelInstallError.network
+        guard let model = installed(tier) else { throw OCRModelInstallError.compilationFailed }
+        let fm = FileManager.default
+        if let obsolete = try OCRModelPack.obsoleteV1InstallDirectory(for: tier),
+           fm.fileExists(atPath: obsolete.path) {
+            try? fm.removeItem(at: obsolete)
         }
-    }
-
-    /// 只为把 `URLSessionDownloadTask` 的进度接出来。`@unchecked Sendable`：
-    /// 内部只有一个不可变的 `@Sendable` 闭包，URLSession 从哪条线程回调都安全。
-    private final class DownloadProgressDelegate: NSObject, URLSessionTaskDelegate,
-                                                   URLSessionDownloadDelegate, @unchecked Sendable {
-        private let onProgress: @Sendable (Double) -> Void
-
-        init(onProgress: @escaping @Sendable (Double) -> Void) {
-            self.onProgress = onProgress
-        }
-
-        func urlSession(
-            _ session: URLSession, downloadTask: URLSessionDownloadTask,
-            didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
-            totalBytesExpectedToWrite: Int64
-        ) {
-            guard totalBytesExpectedToWrite > 0 else { return }
-            // 进度到 1 由调用方在落位后自己发，这里封顶在 0.99——
-            // 否则会在校验/解包/编译还没开始时就先跳成"完成"。
-            onProgress(min(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), 0.99))
-        }
-
-        func urlSession(
-            _ session: URLSession, downloadTask: URLSessionDownloadTask,
-            didFinishDownloadingTo location: URL
-        ) {
-            // async 版 download(from:delegate:) 自己接管文件搬运，这里无需处理。
-        }
-    }
-
-    // MARK: - 校验
-
-    /// 流式算 SHA-256。整包读进内存再算会在 medium 档（47MB）上无谓地翻倍占用。
-    static func verifyChecksum(of url: URL, expected: String) throws {
-        guard try checksum(of: url) == expected else {
-            throw OCRModelInstallError.checksumMismatch
-        }
-    }
-
-    private static func checksum(of url: URL) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
-            hasher.update(data: chunk)
-        }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
-    // MARK: - 解包
-
-    /// AppleArchive 解包。iOS 没有公开的解 zip API，所以模型包用 .aar 分发。
-    private func extract(archive: URL, to directory: URL) throws {
-        guard let source = ArchiveByteStream.fileStream(
-                path: FilePath(archive.path), mode: .readOnly,
-                options: [], permissions: FilePermissions(rawValue: 0o644)),
-              let decompressed = ArchiveByteStream.decompressionStream(readingFrom: source),
-              let decoded = ArchiveStream.decodeStream(readingFrom: decompressed),
-              let extraction = ArchiveStream.extractStream(extractingTo: FilePath(directory.path))
-        else {
-            throw OCRModelInstallError.extractionFailed
-        }
-        defer {
-            try? extraction.close()
-            try? decoded.close()
-            try? decompressed.close()
-            try? source.close()
-        }
-        do {
-            _ = try ArchiveStream.process(readingFrom: decoded, writingTo: extraction)
-        } catch {
-            throw OCRModelInstallError.extractionFailed
-        }
+        return model
     }
 
     // MARK: - 编译与落位
 
-    private func compileAndInstall(tier: OCRModelTier, from unpacked: URL) async throws -> InstalledOCRModel {
+    private static func compile(
+        tier: OCRModelTier,
+        from unpacked: URL,
+        into staging: URL
+    ) async throws {
         let detectorSource = unpacked.appendingPathComponent(OCRModelPack.detectorFileName)
         let recognizerSource = unpacked.appendingPathComponent(OCRModelPack.recognizerFileName)
         let charactersSource = unpacked.appendingPathComponent(OCRModelPack.charactersFileName)
@@ -305,65 +390,18 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
             throw OCRModelInstallError.compilationFailed
         }
 
-        let root = try OCRModelPack.installDirectory(for: tier)
-        // 先落到同级的临时目录再整体改名，避免"装了一半"的目录被 installed() 认成可用。
-        let staging = root.deletingLastPathComponent()
-            .appendingPathComponent("\(tier.rawValue).staging", isDirectory: true)
-        try? fm.removeItem(at: staging)
-        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-
         let target = InstalledOCRModel(
             tier: tier,
             detectorURL: staging.appendingPathComponent(Self.compiledDetector),
             recognizerURL: staging.appendingPathComponent(Self.compiledRecognizer),
             charactersURL: staging.appendingPathComponent(OCRModelPack.charactersFileName)
         )
-        do {
-            try fm.moveItem(at: compiledDetector, to: target.detectorURL)
-            try fm.moveItem(at: compiledRecognizer, to: target.recognizerURL)
-            try fm.copyItem(at: charactersSource, to: target.charactersURL)
-            var staged = staging
-            var values = URLResourceValues()
-            // 模型是可重新下载的派生数据，不该占用户的 iCloud 备份额度。
-            values.isExcludedFromBackup = true
-            try? staged.setResourceValues(values)
+        try fm.moveItem(at: compiledDetector, to: target.detectorURL)
+        try fm.moveItem(at: compiledRecognizer, to: target.recognizerURL)
+        try fm.copyItem(at: charactersSource, to: target.charactersURL)
 
-            // 激活前就把模型真正加载一次，并用零张量跑通。仅检查文件存在会把
-            // 损坏字表、错误输出形状或 Core ML 能编译却不能执行的包放进正式目录。
-            try Self.validateStaged(target)
-            try Self.activate(staging: staging, at: root)
-        } catch {
-            try? fm.removeItem(at: staging)
-            throw OCRModelInstallError.compilationFailed
-        }
-
-        guard let model = installed(tier) else { throw OCRModelInstallError.compilationFailed }
-        if let obsolete = try OCRModelPack.obsoleteV1InstallDirectory(for: tier),
-           fm.fileExists(atPath: obsolete.path) {
-            // v1 只在 v2 完整激活并能重新加载之后才删。前面任一步失败都会保留
-            // 旧目录，catalog 因拿不到 v2 而自然继续走 Vision。
-            try? fm.removeItem(at: obsolete)
-        }
-        return model
-    }
-
-    /// 同目录替换保证 `installed()` 只会看到完整旧版或完整新版。这个小函数
-    /// 单独开放给文件系统单测；实际安装仍只有上面这一条路径。
-    static func activate(staging: URL, at root: URL) throws {
-        let fm = FileManager.default
-        let parent = root.deletingLastPathComponent()
-        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-        guard fm.fileExists(atPath: root.path) else {
-            try fm.moveItem(at: staging, to: root)
-            return
-        }
-
-        let backupName = "\(root.lastPathComponent).previous-\(UUID().uuidString)"
-        _ = try fm.replaceItemAt(
-            root, withItemAt: staging, backupItemName: backupName,
-            options: [.usingNewMetadataOnly]
-        )
-        try? fm.removeItem(at: parent.appendingPathComponent(backupName))
+        // 激活前把模型加载并跑通零张量。低层安装器只在这个检查通过后原子换目录。
+        try Self.validateStaged(target)
     }
 
     private static func validateStaged(_ model: InstalledOCRModel) throws {

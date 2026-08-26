@@ -26,6 +26,9 @@ struct AppShell: View {
     /// 高精度识别模型的安装状态。挂在 shell 上而不是相机页：下载会跨越标签页切换，
     /// 状态放在页面上会随页面销毁而丢失。
     @State private var modelCatalog: OCRModelCatalog?
+    /// 神经重建的设备探针与预热模型同样要跨页面存活。页面离开时 catalog 仍在，
+    /// 但它会主动清掉 Core ML 强引用。
+    @State private var neuralReconstructionCatalog: NeuralReconstructionCatalog
     @State private var appleTranslationProvider: AppleTranslationProvider
     @State private var sheetDestination: SheetDestination?
     private let usesDemoData: Bool
@@ -76,6 +79,24 @@ struct AppShell: View {
 
         let captureSource: any PhotoCaptureSource
         let recognizer: any TextRecognitionService
+        let artifactInstaller = ModelArtifactInstaller()
+        let neuralCatalog = NeuralReconstructionCatalog(
+            artifactInstaller: artifactInstaller,
+            probeRunner: { modelURL, computeUnits, fixture in
+                try await NeuralReconstructionProductionProbe.run(
+                    modelURL: modelURL,
+                    computeUnits: computeUnits,
+                    fixture: fixture
+                )
+            },
+            reconstructorFactory: { modelURL, route in
+                try NeuralReconstructionProductionProbe.makeReconstructor(
+                    modelURL: modelURL,
+                    route: route
+                )
+            }
+        )
+        _neuralReconstructionCatalog = State(initialValue: neuralCatalog)
         // 罐头相机路径下不接 catalog：那条路一行真实模型代码都不碰，
         // 接进去只会让 UI 测试莫名其妙地去下载 13MB。
         var catalog: OCRModelCatalog?
@@ -88,12 +109,18 @@ struct AppShell: View {
         } else {
             captureSource = CameraCaptureSource()
             recognizer = VisionTextRecognitionService()
-            catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
+            catalog = OCRModelCatalog(
+                installer: OCRModelPackInstaller(artifactInstaller: artifactInstaller),
+                settings: settings
+            )
         }
 #else
         captureSource = CameraCaptureSource()
         recognizer = VisionTextRecognitionService()
-        catalog = OCRModelCatalog(installer: OCRModelPackInstaller(), settings: settings)
+        catalog = OCRModelCatalog(
+            installer: OCRModelPackInstaller(artifactInstaller: artifactInstaller),
+            settings: settings
+        )
 #endif
         _modelCatalog = State(initialValue: catalog)
         _photoController = State(initialValue: PhotoTranslationController(
@@ -102,7 +129,15 @@ struct AppShell: View {
             recognizer: recognizer,
             modelCatalog: catalog,
             translationService: configuration.useCannedTranslation ? CannedTranslationService() : nil,
-            synthesizer: voiceSynthesizer
+            synthesizer: voiceSynthesizer,
+            reconstructionRoute: { regionCount in
+                neuralCatalog.routeForNextPhoto(regionCount: regionCount)
+            },
+            finalReconstructionHandler: { result in
+                neuralCatalog.requestBackgroundInstallForFuturePhoto(
+                    hasUnresolvedRegions: !result.unresolvedBlockIDs.isEmpty
+                )
+            }
         ))
     }
 
@@ -164,6 +199,27 @@ struct AppShell: View {
             if previousMode == .text, newMode != .text {
                 dismissKeyboard()
             }
+        }
+        .onAppear {
+            if selectedMode == .camera {
+                neuralReconstructionCatalog.enterPhotoPage()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didBecomeActiveNotification
+        )) { _ in
+            neuralReconstructionCatalog.appDidEnterForeground()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.willResignActiveNotification
+        )) { _ in
+            neuralReconstructionCatalog.appDidEnterBackground()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didReceiveMemoryWarningNotification
+        )) { _ in
+            neuralReconstructionCatalog.didReceiveMemoryWarning()
+            photoController.handleMemoryWarning()
         }
         .sensoryFeedback(.selection, trigger: selectedMode)
         .sheet(item: $sheetDestination) { destination in
@@ -243,6 +299,13 @@ struct AppShell: View {
         if newMode == .camera, selectedMode == .camera, photoController.image != nil {
             photoController.reset()
             return
+        }
+        if selectedMode == .camera, newMode != .camera {
+            photoController.stop()
+            neuralReconstructionCatalog.leavePhotoPage()
+        }
+        if selectedMode != .camera, newMode == .camera {
+            neuralReconstructionCatalog.enterPhotoPage()
         }
         selectedMode = newMode
     }

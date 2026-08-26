@@ -46,7 +46,6 @@ enum AppTheme {
     static let alert = Color(light: 0xB4443C, dark: 0xE07A6C)
     /// 压在照片（而非 app 纸面）上的固定告警色：译文贴片的底色是从原图采样来的，
     /// 自适应 token 会在浅色照片上被冲淡，这里必须钉死一个高对比红。
-    static let alertOnPhoto = Color(hex: 0xE0503C)
     /// 快门盘上的内容色。快门盘是固定白色的相机件，压在它上面的转圈也必须固定深色——
     /// 用自适应的 ink 会在深色模式下变浅米色，白盘上直接隐形。
     static let shutterInk = Color(hex: 0x1C1A17)

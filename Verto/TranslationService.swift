@@ -260,6 +260,12 @@ struct CannedTranslationService: TranslationService {
             return "今天的晚霞特别好看，我想和你一起去海边走走。"
         case ("zh-Hans", "en", "你好"):
             return "Hello"
+        case ("zh-Hans", "en", "欢迎光临"):
+            return "Welcome"
+        case ("zh-Hans", "en", "营业时间 09:00-21:00"):
+            return "Open 09:00-21:00"
+        case ("zh-Hans", "en", "禁止吸烟"):
+            return "No smoking"
         case ("en", "zh-Hans", "Good morning"):
             return "早上好"
         case ("zh-Hans", "ja", "谢谢你的款待。"):

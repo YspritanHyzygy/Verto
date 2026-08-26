@@ -42,6 +42,26 @@ final class CTCDecoderTests: XCTestCase {
         XCTAssertEqual(decode(steps: [1, 0, 1]).text, "AA")
     }
 
+    func testCharacterSpansPreserveCollapsedTimeStepsAndTextOffsets() {
+        let result = decode(steps: [1, 1, 0, 2, 4, 3])
+
+        XCTAssertEqual(result.timeSteps, 6)
+        XCTAssertEqual(result.characterSpans, [
+            .init(text: "A", characterRange: 0..<1, timeStepRange: 0..<2),
+            .init(text: "B", characterRange: 1..<2, timeStepRange: 3..<4),
+            .init(text: " ", characterRange: 2..<3, timeStepRange: 4..<5),
+            .init(text: "C", characterRange: 3..<4, timeStepRange: 5..<6),
+        ])
+    }
+
+    func testRepeatSeparatedByBlankGetsTwoIndependentSpans() {
+        let result = decode(steps: [1, 1, 0, 1])
+
+        XCTAssertEqual(result.text, "AA")
+        XCTAssertEqual(result.characterSpans.map(\.timeStepRange), [0..<2, 3..<4])
+        XCTAssertEqual(result.characterSpans.map(\.characterRange), [0..<1, 1..<2])
+    }
+
     func testAllBlankYieldsEmptyTextAndZeroConfidence() {
         let result = decode(steps: [0, 0, 0])
         XCTAssertEqual(result.text, "")

@@ -48,13 +48,30 @@ private final class StubCaptureSource: PhotoCaptureSource {
     /// 那时 continuation 还没建，此刻放行等于放了个空，之后就永远醒不过来。
     private(set) var isCaptureSuspended = false
     private var pendingCapture: CheckedContinuation<Void, Never>?
+    var holdsStart = false
+    private(set) var isStartSuspended = false
+    private var pendingStart: CheckedContinuation<Void, Never>?
 
     func releaseCapture() {
         pendingCapture?.resume()
         pendingCapture = nil
     }
 
-    func start() async { startCount += 1 }
+    func releaseStart() {
+        pendingStart?.resume()
+        pendingStart = nil
+    }
+
+    func start() async {
+        startCount += 1
+        if holdsStart {
+            await withCheckedContinuation { continuation in
+                pendingStart = continuation
+                isStartSuspended = true
+            }
+            isStartSuspended = false
+        }
+    }
     func stop() { stopCount += 1 }
     func setFlashEnabled(_ enabled: Bool) { flashEnabled = enabled }
     func focusAndMeter(at devicePoint: CGPoint) { requestedFocusPoint = devicePoint }
@@ -126,6 +143,123 @@ private final class RecordingTranslationService: TranslationService, @unchecked 
     }
 }
 
+private final class ControlledBatchTranslationService: TranslationService, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [Int: AsyncStream<TranslationBatchElement>.Continuation] = [:]
+    private var batches: [[String]] = []
+
+    var requestBatches: [[String]] { lock.withLock { batches } }
+
+    func translate(_ request: TranslationRequest) async throws -> TranslationResult {
+        TranslationResult(text: "译:\(request.text)", detectedLanguage: nil, alternatives: [])
+    }
+
+    func translateBatch(
+        _ texts: [String],
+        source: Language,
+        target: Language
+    ) -> AsyncStream<TranslationBatchElement> {
+        AsyncStream { continuation in
+            lock.withLock {
+                let index = batches.count
+                batches.append(texts)
+                continuations[index] = continuation
+            }
+        }
+    }
+
+    func succeed(_ text: String, batch: Int = 0) {
+        let continuation = lock.withLock { continuations[batch] }
+        continuation?.yield(TranslationBatchElement(
+            text: text,
+            result: .success(TranslationResult(
+                text: "译:\(text)", detectedLanguage: nil, alternatives: []
+            ))
+        ))
+    }
+
+    func finish(batch: Int = 0) {
+        let continuation = lock.withLock { continuations.removeValue(forKey: batch) }
+        continuation?.finish()
+    }
+}
+
+private final class ControlledSingleTranslationService: TranslationService, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<TranslationResult, Never>?
+    private var _requestCount = 0
+
+    var requestCount: Int { lock.withLock { _requestCount } }
+
+    func translate(_ request: TranslationRequest) async throws -> TranslationResult {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                self.continuation = continuation
+                _requestCount += 1
+            }
+        }
+    }
+
+    func succeed(_ text: String) {
+        let continuation = lock.withLock {
+            let current = self.continuation
+            self.continuation = nil
+            return current
+        }
+        continuation?.resume(returning: TranslationResult(
+            text: text,
+            detectedLanguage: nil,
+            alternatives: []
+        ))
+    }
+}
+
+private final class RecordingPhotoReconstructor: PhotoReconstructing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _callCount = 0
+    private var _holdsResult = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    var holdsResult: Bool {
+        get { lock.withLock { _holdsResult } }
+        set { lock.withLock { _holdsResult = newValue } }
+    }
+
+    var callCount: Int { lock.withLock { _callCount } }
+
+    func releaseResult() {
+        let continuation = lock.withLock {
+            let current = self.continuation
+            self.continuation = nil
+            return current
+        }
+        continuation?.resume()
+    }
+
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock],
+        route: PhotoReconstructionRoute
+    ) async throws -> PhotoReconstructionResult {
+        if holdsResult {
+            await withCheckedContinuation { continuation in
+                lock.withLock {
+                    self.continuation = continuation
+                    _callCount += 1
+                }
+            }
+        } else {
+            lock.withLock { _callCount += 1 }
+        }
+        return PhotoReconstructionResult(
+            image: image,
+            inlinedBlockIDs: Set(blocks.map(\.id)),
+            unresolvedBlockIDs: [],
+            backend: route.backend
+        )
+    }
+}
+
 @MainActor
 private final class SilentSynthesizer: SpeechSynthesizing {
     private(set) var spoken: [(text: String, languageCode: String)] = []
@@ -149,15 +283,19 @@ final class PhotoTranslationControllerTests: XCTestCase {
     private func makeController(
         recognizer: any TextRecognitionService,
         capture: StubCaptureSource? = nil,
-        translation: RecordingTranslationService = RecordingTranslationService(),
-        synthesizer: SilentSynthesizer? = nil
+        translation: any TranslationService = RecordingTranslationService(),
+        synthesizer: SilentSynthesizer? = nil,
+        reconstructor: any PhotoReconstructing = PhotoReconstructionPipeline(),
+        route: @escaping @MainActor @Sendable (Int) -> PhotoReconstructionRoute = { _ in .adaptive }
     ) -> PhotoTranslationController {
         PhotoTranslationController(
             settings: AppSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!),
             captureSource: capture ?? StubCaptureSource(),
             recognizer: recognizer,
             translationService: translation,
-            synthesizer: synthesizer ?? SilentSynthesizer()
+            synthesizer: synthesizer ?? SilentSynthesizer(),
+            photoReconstructor: reconstructor,
+            reconstructionRoute: route
         )
     }
 
@@ -169,9 +307,10 @@ final class PhotoTranslationControllerTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        for _ in 0..<500 {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
             if condition() { return }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         XCTFail(message, file: file, line: line)
     }
@@ -256,6 +395,68 @@ final class PhotoTranslationControllerTests: XCTestCase {
         XCTAssertEqual(Set(translation.requests.map(\.text)), ["你好", "再见"])
     }
 
+    func testParagraphTranslationKeepsItsLineAndTokenGeometry() async {
+        let firstQuad = TextQuad.upright(x: 0.1, y: 0.6, width: 0.5, height: 0.05)
+        let secondQuad = TextQuad.upright(x: 0.1, y: 0.53, width: 0.5, height: 0.05)
+        let paragraph = RecognizedTextBlock(lines: [
+            RecognizedTextLine(text: "Hello", quad: firstQuad),
+            RecognizedTextLine(text: "world", quad: secondQuad),
+        ])
+        let translation = RecordingTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [paragraph]),
+            translation: translation
+        )
+
+        controller.use(sample())
+        await waitUntil({ controller.phase == .done }, "段落翻译没有完成")
+
+        XCTAssertEqual(translation.requests.map(\.text), ["Hello world"])
+        XCTAssertEqual(controller.blocks.first?.lines.map(\.quad), [firstQuad, secondQuad])
+        XCTAssertEqual(controller.blocks.first?.tokens.map(\.text), ["Hello", "world"])
+    }
+
+    func testSelectionTranslationUsesTheExistingMemoryCache() async throws {
+        let translation = RecordingTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("牌子")]),
+            translation: translation
+        )
+        await controller.start()
+
+        let first = await controller.translateSelection("selected words")
+        let second = await controller.translateSelection("selected words")
+
+        XCTAssertEqual(try first.get(), "译:selected words")
+        XCTAssertEqual(try second.get(), "译:selected words")
+        XCTAssertEqual(translation.requests.map(\.text), ["selected words"])
+    }
+
+    func testSelectionResultReturningAfterStopIsRejectedAndNotCached() async throws {
+        let translation = ControlledSingleTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(),
+            translation: translation
+        )
+        await controller.start()
+        let old = Task { await controller.translateSelection("late selection") }
+        await waitUntil({ translation.requestCount == 1 }, "选择翻译没有发出")
+
+        controller.stop()
+        translation.succeed("old result")
+        let oldResult = await old.value
+        XCTAssertThrowsError(try oldResult.get()) { error in
+            XCTAssertEqual(error as? TranslationError, .invalidResponse)
+        }
+
+        await controller.start()
+        let fresh = Task { await controller.translateSelection("late selection") }
+        await waitUntil({ translation.requestCount == 2 }, "旧选择结果被错误写进缓存")
+        translation.succeed("fresh result")
+        let freshResult = await fresh.value
+        XCTAssertEqual(try freshResult.get(), "fresh result")
+    }
+
     /// 横持拍照：照片保持拍下来的样子，识别框却是在转正后的副本里量的，
     /// 所以框必须转回原图坐标才贴得上。
     ///
@@ -296,15 +497,82 @@ final class PhotoTranslationControllerTests: XCTestCase {
     }
 
     func testBlocksAppearBeforeTranslationsArrive() async {
-        let controller = makeController(recognizer: StubRecognizer(blocks: [block("你好")]))
+        let translation = ControlledBatchTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("你好")]),
+            translation: translation
+        )
 
         controller.use(sample())
-        // 识别一出结果块就该上屏（带原文占位），不等翻译——同语音气泡的约定。
         await waitUntil({ !controller.blocks.isEmpty }, "识别结果没有先于翻译上屏")
 
         XCTAssertEqual(controller.blocks.first?.displayText, "你好", "译文未到时先显示原文")
+        translation.succeed("你好")
+        translation.finish()
         await waitUntil({ controller.phase == .done }, "管线没有走到 done")
         XCTAssertEqual(controller.blocks.first?.displayText, "译:你好")
+    }
+
+    func testFinalPhotoPublishesOnceAfterEveryTranslationSettles() async {
+        let translation = ControlledBatchTranslationService()
+        let reconstructor = RecordingPhotoReconstructor()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("甲", y: 0.7), block("乙", y: 0.4)]),
+            translation: translation,
+            reconstructor: reconstructor
+        )
+
+        controller.use(sample())
+        await waitUntil({ translation.requestBatches.count == 1 }, "批量翻译没有发出")
+        translation.succeed("甲")
+        await waitUntil({ controller.blocks.contains { $0.source == "甲" && !$0.isPending } }, "第一块没有回包")
+
+        XCTAssertNil(controller.finalTranslatedPhoto)
+        XCTAssertEqual(reconstructor.callCount, 0)
+
+        translation.succeed("乙")
+        translation.finish()
+        await waitUntil({ controller.phase == .done }, "最终译图没有完成")
+
+        XCTAssertEqual(reconstructor.callCount, 1)
+        XCTAssertNotNil(controller.finalTranslatedPhoto)
+    }
+
+    func testResetRejectsALateReconstructionResult() async {
+        let reconstructor = RecordingPhotoReconstructor()
+        reconstructor.holdsResult = true
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("牌子")]),
+            reconstructor: reconstructor
+        )
+
+        controller.use(sample())
+        await waitUntil({ reconstructor.callCount == 1 }, "重建任务没有启动")
+        controller.reset()
+        reconstructor.releaseResult()
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertNil(controller.image)
+        XCTAssertNil(controller.finalTranslatedPhoto)
+        XCTAssertEqual(controller.phase, .idle)
+    }
+
+    func testMemoryWarningFinishesTheSameUnpublishedGeneration() async {
+        let reconstructor = RecordingPhotoReconstructor()
+        reconstructor.holdsResult = true
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("牌子")]),
+            reconstructor: reconstructor
+        )
+
+        controller.use(sample())
+        await waitUntil({ reconstructor.callCount == 1 }, "重建任务没有启动")
+        controller.handleMemoryWarning()
+        reconstructor.releaseResult()
+        await waitUntil({ controller.phase == .done }, "内存警告后没有提交兜底结果")
+
+        XCTAssertNotNil(controller.finalTranslatedPhoto)
+        XCTAssertEqual(reconstructor.callCount, 1)
     }
 
     func testEmptyRecognitionFailsInsteadOfShowingBlankResult() async {
@@ -506,6 +774,22 @@ final class PhotoTranslationControllerTests: XCTestCase {
         // 权限被拒是进页面就该说清楚的事，不必等用户按快门才报。
         XCTAssertTrue(controller.isPermissionFailure)
         XCTAssertFalse(controller.canCapture)
+    }
+
+    func testLeavingWhileCameraStartsInvalidatesTheActivation() async {
+        let capture = StubCaptureSource()
+        capture.holdsStart = true
+        let controller = makeController(recognizer: StubRecognizer(blocks: []), capture: capture)
+        let start = Task { await controller.start() }
+        await waitUntil({ capture.isStartSuspended }, "相机启动没有停在测试闸门")
+
+        controller.stop()
+        capture.releaseStart()
+        await start.value
+
+        XCTAssertEqual(capture.startCount, 1)
+        XCTAssertEqual(capture.stopCount, 1)
+        XCTAssertEqual(controller.phase, .idle)
     }
 
     // MARK: - 朗读

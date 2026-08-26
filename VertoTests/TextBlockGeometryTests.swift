@@ -18,6 +18,21 @@ import SwiftUI
 import XCTest
 @testable import Verto
 
+private struct DelayedNeuralPhotoReconstructor: NeuralPhotoReconstructing {
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult {
+        Thread.sleep(forTimeInterval: 0.08)
+        return PhotoReconstructionResult(
+            image: image,
+            inlinedBlockIDs: Set(blocks.map(\.id)),
+            unresolvedBlockIDs: [],
+            backend: .neural
+        )
+    }
+}
+
 /// 叠加层的坐标换算与行→段合并都是纯函数，这里钉死它们的行为——
 /// 这两处一旦错位，译文贴片会整体偏移或把两段文字粘成一段，
 /// 而截图上未必一眼看得出是"错"还是"这张图就长这样"。
@@ -246,6 +261,292 @@ final class TextBlockGeometryTests: XCTestCase {
         XCTAssertEqual(blocks.count, 1)
         XCTAssertEqual(blocks.first?.lineCount, 2)
         XCTAssertEqual(blocks.first?.text, "First line Second line", "自上而下拼接，拉丁文之间补空格")
+        XCTAssertEqual(blocks.first?.lines.map(\.text), ["First line", "Second line"])
+        XCTAssertEqual(blocks.first?.lines.flatMap(\.tokens).map(\.text), ["First line", "Second line"])
+    }
+
+    func testLatinTokenizationKeepsAdjacentPunctuation() {
+        XCTAssertEqual(
+            TextTokenization.ranges(in: "Hello, world!").map(\.text),
+            ["Hello,", "world!"]
+        )
+    }
+
+    func testNeuralPolicyUsesRuntimeMeasurementsAndPowerState() {
+        XCTAssertTrue(NeuralReconstructionPolicy.allows(
+            medianSeconds: 0.8,
+            regionCount: 4,
+            lowPowerMode: false,
+            thermalState: .nominal,
+            hadMemoryWarning: false
+        ))
+        XCTAssertFalse(NeuralReconstructionPolicy.allows(
+            medianSeconds: 1.01,
+            regionCount: 1,
+            lowPowerMode: false,
+            thermalState: .nominal,
+            hadMemoryWarning: false
+        ))
+        XCTAssertFalse(NeuralReconstructionPolicy.allows(
+            medianSeconds: 0.9,
+            regionCount: 7,
+            lowPowerMode: false,
+            thermalState: .nominal,
+            hadMemoryWarning: false
+        ))
+        XCTAssertFalse(NeuralReconstructionPolicy.allows(
+            medianSeconds: 0.5,
+            regionCount: 1,
+            lowPowerMode: true,
+            thermalState: .serious,
+            hadMemoryWarning: false
+        ))
+    }
+
+    @MainActor
+    func testNeuralWatchdogFallsBackBeforeLateResultCanPublish() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80)).image {
+            UIColor.white.setFill()
+            $0.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+            ("SALE" as NSString).draw(
+                in: CGRect(x: 24, y: 24, width: 72, height: 24),
+                withAttributes: [.foregroundColor: UIColor.black]
+            )
+        }
+        let recognized = RecognizedTextBlock(
+            text: "SALE",
+            quad: .upright(x: 0.2, y: 0.3, width: 0.6, height: 0.3)
+        )
+        let block = PhotoTranslationController.TranslatedBlock(
+            id: recognized.id,
+            source: recognized.text,
+            translation: "GO",
+            isPending: false,
+            failure: nil,
+            lines: recognized.lines
+        )
+
+        let result = try await PhotoReconstructionPipeline(
+            watchdogDuration: .milliseconds(5)
+        ).reconstruct(
+            image: image,
+            blocks: [block],
+            route: .neural(DelayedNeuralPhotoReconstructor())
+        )
+
+        XCTAssertEqual(result.backend, .adaptive)
+    }
+
+    @MainActor
+    func testAdaptiveReconstructionChangesOnlyAnAcceptedFlatTextRegion() throws {
+        let size = CGSize(width: 240, height: 120)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor(red: 0.9, green: 0.84, blue: 0.7, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            ("SALE" as NSString).draw(
+                in: CGRect(x: 48, y: 42, width: 144, height: 36),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 30, weight: .bold),
+                    .foregroundColor: UIColor.black,
+                ]
+            )
+        }
+        let recognized = RecognizedTextBlock(
+            text: "SALE",
+            quad: .upright(x: 0.2, y: 0.35, width: 0.6, height: 0.3)
+        )
+        let block = PhotoTranslationController.TranslatedBlock(
+            id: recognized.id,
+            source: recognized.text,
+            translation: "GO",
+            isPending: false,
+            failure: nil,
+            lines: recognized.lines
+        )
+
+        let result = try AdaptiveBackgroundReconstructor().reconstruct(
+            image: image,
+            blocks: [block]
+        )
+
+        XCTAssertEqual(result.inlinedBlockIDs, [block.id])
+        XCTAssertTrue(result.unresolvedBlockIDs.isEmpty)
+        let sourceCG = try XCTUnwrap(image.cgImage)
+        let resultCG = try XCTUnwrap(result.image.cgImage)
+        let before = try rgbaBytes(in: sourceCG)
+        let after = try rgbaBytes(in: resultCG)
+        let allowed = recognized.quad.boundingBox
+        let minX = Int(floor(allowed.minX * CGFloat(sourceCG.width)))
+        let maxX = Int(ceil(allowed.maxX * CGFloat(sourceCG.width)))
+        let minY = Int(floor(allowed.minY * CGFloat(sourceCG.height)))
+        let maxY = Int(ceil(allowed.maxY * CGFloat(sourceCG.height)))
+        var changedInside = 0
+        for y in 0..<sourceCG.height {
+            for x in 0..<sourceCG.width {
+                let offset = (y * sourceCG.width + x) * 4
+                let changed = before[offset..<(offset + 4)] != after[offset..<(offset + 4)]
+                let safelyOutsideLine = x < minX || x >= maxX || y < minY || y >= maxY
+                if safelyOutsideLine {
+                    XCTAssertFalse(changed, "文字区域外像素变化：\(x),\(y)")
+                } else if changed {
+                    changedInside += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(changedInside, 0)
+    }
+
+    func testNeuralBlendPreservesKnownPixelsAndUsesGeneratedHole() {
+        let original: [UInt8] = [10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255]
+        let generated: [UInt8] = [200, 210, 220, 255, 230, 240, 250, 255, 100, 110, 120, 255]
+
+        let result = NeuralBackgroundReconstructor.blendGeneratedPixels(
+            generated,
+            with: original,
+            knownMask: [255, 0, 128]
+        )
+
+        XCTAssertEqual(Array(result[0..<4]), Array(original[0..<4]))
+        XCTAssertEqual(Array(result[4..<8]), Array(generated[4..<8]))
+        XCTAssertEqual(result[8], 85)
+        XCTAssertEqual(result[9], 95)
+        XCTAssertEqual(result[10], 105)
+        XCTAssertEqual(result[11], 255)
+    }
+
+    @MainActor
+    func testAdaptivePixelGuardDrawsOnlyInsideAcceptedLine() throws {
+        let size = CGSize(width: 40, height: 40)
+        let original = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let rendered = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let line = RecognizedTextBlock(
+            text: "x",
+            quad: .upright(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        ).lines[0]
+
+        let guarded = try XCTUnwrap(
+            AdaptiveBackgroundReconstructor.copyOriginalPixelsOutsideLines(
+                original: XCTUnwrap(original.cgImage),
+                rendered: XCTUnwrap(rendered.cgImage),
+                lines: [line]
+            )
+        )
+        let bytes = try rgbaBytes(in: guarded)
+        let width = guarded.width
+        let height = guarded.height
+        let inside = ((height / 2) * width + width / 2) * 4
+        let outside = (2 * width + 2) * 4
+        XCTAssertEqual(Array(bytes[inside..<(inside + 3)]), [0, 0, 255])
+        XCTAssertEqual(Array(bytes[outside..<(outside + 3)]), [255, 0, 0])
+    }
+
+    func testAdaptiveReconstructionStopsAfterCancellation() async throws {
+        let task = Task.detached { () throws -> PhotoReconstructionResult in
+            await Task.yield()
+            return try AdaptiveBackgroundReconstructor().reconstruct(
+                image: UIImage(),
+                blocks: []
+            )
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("取消后的重建任务仍返回了结果")
+        } catch is CancellationError {
+            // 取消沿调用链返回，旧渲染不会继续占用后续代次。
+        }
+    }
+
+    @MainActor
+    func testOpenBlockCardRefreshesWhenTranslationCompletes() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80)).image {
+            UIColor.white.setFill()
+            $0.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+        }
+        let recognized = RecognizedTextBlock(
+            text: "原文",
+            quad: .upright(x: 0.2, y: 0.3, width: 0.6, height: 0.25)
+        )
+        let pending = PhotoTranslationController.TranslatedBlock(
+            id: recognized.id,
+            source: recognized.text,
+            translation: "",
+            isPending: true,
+            failure: nil,
+            lines: recognized.lines
+        )
+        let completed = PhotoTranslationController.TranslatedBlock(
+            id: recognized.id,
+            source: recognized.text,
+            translation: "Done",
+            isPending: false,
+            failure: nil,
+            lines: recognized.lines
+        )
+        let actions = TranslatedPhotoCanvas.Actions(
+            translateSelection: { _ in .success("Done") },
+            isSelectionCurrent: { true },
+            speak: { _, _ in },
+            save: { _, _ in },
+            retryBlock: { _ in }
+        )
+        let photoID = UUID()
+        let view = TranslatedPhotoCanvasView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        view.configure(
+            photoID: photoID,
+            generation: 1,
+            originalImage: image,
+            translatedImage: nil,
+            blocks: [pending],
+            mode: .translation,
+            actions: actions
+        )
+        view.layoutIfNeeded()
+        let blockElement = try XCTUnwrap(
+            view.accessibilityElements?.compactMap { $0 as? UIAccessibilityElement }
+                .first(where: { $0.accessibilityIdentifier == "camera.block.0" })
+        )
+        XCTAssertTrue(blockElement.accessibilityActivate())
+        let label = try XCTUnwrap(
+            descendant(in: view, accessibilityIdentifier: "camera.selectionCard.translation") as? UILabel
+        )
+        XCTAssertEqual(label.text, String(localized: "正在翻译…"))
+
+        view.configure(
+            photoID: photoID,
+            generation: 1,
+            originalImage: image,
+            translatedImage: nil,
+            blocks: [completed],
+            mode: .translation,
+            actions: actions
+        )
+        XCTAssertEqual(label.text, "Done")
+
+        let close = try XCTUnwrap(
+            descendant(in: view, accessibilityIdentifier: "camera.selectionCard.close") as? UIButton
+        )
+        let card = try XCTUnwrap(
+            descendant(in: view, accessibilityIdentifier: "camera.selectionCard")
+        )
+        close.sendActions(for: .touchUpInside)
+        XCTAssertTrue(card.isHidden)
+        view.configure(
+            photoID: photoID,
+            generation: 1,
+            originalImage: image,
+            translatedImage: nil,
+            blocks: [completed],
+            mode: .translation,
+            actions: actions
+        )
+        XCTAssertTrue(card.isHidden, "用户关闭的段落卡被下一次画布更新重新打开")
     }
 
     func testFarApartLinesStaySeparateBlocks() {
@@ -458,5 +759,45 @@ final class TextBlockGeometryTests: XCTestCase {
         for language in Language.all {
             XCTAssertFalse(language.visionRecognitionLanguage.isEmpty, "\(language.code) 缺 Vision 语言码")
         }
+    }
+
+    private func rgbaBytes(in image: CGImage) throws -> [UInt8] {
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let drew = bytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(
+                data: raw.baseAddress,
+                width: image.width,
+                height: image.height,
+                bitsPerComponent: 8,
+                bytesPerRow: image.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .none
+            context.draw(
+                image,
+                in: CGRect(x: 0, y: 0, width: image.width, height: image.height)
+            )
+            return true
+        }
+        guard drew else { throw CocoaError(.fileReadCorruptFile) }
+        return bytes
+    }
+
+    @MainActor
+    private func descendant(
+        in view: UIView,
+        accessibilityIdentifier: String
+    ) -> UIView? {
+        if view.accessibilityIdentifier == accessibilityIdentifier { return view }
+        for subview in view.subviews {
+            if let match = descendant(
+                in: subview,
+                accessibilityIdentifier: accessibilityIdentifier
+            ) {
+                return match
+            }
+        }
+        return nil
     }
 }

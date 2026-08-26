@@ -761,10 +761,15 @@ final class VertoUITests: XCTestCase {
         let retake = app.buttons["camera.retakeButton"]
         XCTAssertTrue(retake.waitForExistence(timeout: 2))
 
-        // 至少一块译文贴片就地叠在照片上。
+        // 画布暴露段落语义，照片里的译文已经合成进同一张图。
         let firstBlock = element("camera.block.0", in: app)
         XCTAssertTrue(firstBlock.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(elementCount("camera.block.1", in: app), 0, "多行告示应识别出多块")
+        let originalMode = element("camera.photoDisplayMode.original", in: app)
+        let translationMode = element("camera.photoDisplayMode.translation", in: app)
+        XCTAssertTrue(originalMode.waitForExistence(timeout: 2))
+        XCTAssertTrue(translationMode.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitUntilSelected(translationMode))
         captureScreenshot(named: "camera-overlay", of: app)
 
         let secondBlock = element("camera.block.1", in: app)
@@ -809,7 +814,7 @@ final class VertoUITests: XCTestCase {
         }
         XCTAssertGreaterThan(abs(firstDelta), 20, "结果照片没有响应水平拖动")
         XCTAssertEqual(firstDelta, secondDelta, accuracy: 2, "译文贴片没有作为同一画布一起移动")
-        XCTAssertEqual(elementCount("camera.blockDetail.source", in: app), 0, "从译文框起拖误开了详情")
+        XCTAssertEqual(elementCount("camera.selectionCard", in: app), 0, "从文字区起拖误开了操作卡")
         captureScreenshot(named: "camera-overlay-panned", of: app)
 
         // 默认仍铺满屏，但继续向内捏合必须能退到完整照片，而不是卡死在 1×。
@@ -832,6 +837,12 @@ final class VertoUITests: XCTestCase {
             translated.rangeOfCharacter(from: .latinLetters),
             "目标语言为英文时译文应含拉丁字母，实际：\(translated)"
         )
+
+        originalMode.tap()
+        XCTAssertTrue(waitUntilSelected(originalMode))
+        XCTAssertTrue(element("camera.token.0", in: app).waitForExistence(timeout: 3))
+        translationMode.tap()
+        XCTAssertTrue(waitUntilSelected(translationMode))
 
         // 结果态原快门位置已经是画布；连续点它不能悄悄再开一轮拍照。
         oldShutterLocation.tap()
@@ -880,7 +891,7 @@ final class VertoUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingAnOverlayBlockOpensDetailAndSavesToHistory() throws {
+    func testPhotoCanvasParagraphAndWordCardsSaveToHistory() throws {
         let app = launchApp(mode: "camera")
 
         let shutter = element("camera.shutterButton", in: app)
@@ -894,31 +905,48 @@ final class VertoUITests: XCTestCase {
         XCTAssertTrue(waitUntilHittable(firstBlock))
         firstBlock.tap()
 
-        // 详情页给出原文/译文对照。
-        let detailSource = element("camera.blockDetail.source", in: app)
-        let detailTranslation = element("camera.blockDetail.translation", in: app)
+        let detailSource = element("camera.selectionCard.source", in: app)
+        let detailTranslation = element("camera.selectionCard.translation", in: app)
         XCTAssertTrue(detailSource.waitForExistence(timeout: 4))
         XCTAssertTrue(detailTranslation.waitForExistence(timeout: 4))
         XCTAssertEqual(detailSource.label, blockSource, "详情里的原文应与贴片上那块一致")
         XCTAssertNotEqual(detailTranslation.label, detailSource.label)
-        captureScreenshot(named: "camera-block-detail", of: app)
+        captureScreenshot(named: "camera-paragraph-card", of: app)
 
         let translationText = detailTranslation.label
-        let save = element("camera.blockDetail.save", in: app)
+        let save = element("camera.selectionCard.save", in: app)
         XCTAssertTrue(save.waitForExistence(timeout: 2))
         XCTAssertTrue(waitUntilHittable(save))
         save.tap()
 
-        let copy = element("camera.blockDetail.copy", in: app)
+        let copy = element("camera.selectionCard.copy", in: app)
         XCTAssertTrue(copy.waitForExistence(timeout: 2))
         copy.tap()
-        XCTAssertTrue(element("camera.blockDetail.speak", in: app).exists)
+        XCTAssertTrue(element("camera.selectionCard.speak", in: app).exists)
 
         // 存进去的那条要能在历史记录里找回来。
-        let closeDetail = element("camera.blockDetail.close", in: app)
+        let closeDetail = element("camera.selectionCard.close", in: app)
         XCTAssertTrue(closeDetail.waitForExistence(timeout: 2))
         closeDetail.tap()
         XCTAssertTrue(waitUntilAbsent(detailTranslation))
+
+        let originalMode = element("camera.photoDisplayMode.original", in: app)
+        originalMode.tap()
+        XCTAssertTrue(waitUntilSelected(originalMode))
+        let firstToken = element("camera.token.0", in: app)
+        let secondToken = element("camera.token.1", in: app)
+        XCTAssertTrue(firstToken.waitForExistence(timeout: 3))
+        XCTAssertTrue(secondToken.waitForExistence(timeout: 3))
+        firstToken.press(forDuration: 0.5, thenDragTo: secondToken)
+        let selectionSource = element("camera.selectionCard.source", in: app)
+        let selectionTranslation = element("camera.selectionCard.translation", in: app)
+        XCTAssertTrue(selectionSource.waitForExistence(timeout: 3))
+        XCTAssertTrue(selectionTranslation.waitForExistence(timeout: 4))
+        XCTAssertTrue(element("camera.selectionHandle.start", in: app).exists)
+        XCTAssertTrue(element("camera.selectionHandle.end", in: app).exists)
+        captureScreenshot(named: "camera-word-selection", of: app)
+        element("camera.selectionCard.close", in: app).tap()
+        XCTAssertTrue(waitUntilAbsent(selectionSource))
 
         tabButton(named: "文字", in: app).tap()
         let historyButton = element("history-button", in: app)

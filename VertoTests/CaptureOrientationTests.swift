@@ -150,25 +150,16 @@ final class CaptureOrientationTests: XCTestCase {
         }
     }
 
-    // MARK: - 取色采样区
+    // MARK: - token 几何
 
-    /// 取色的外扩量必须按行厚算。躺下来的框其包围盒"高"就是行长，
-    /// 按它外扩会一口气吃进半张图——底色与字色被邻近内容稀释成灰的。
-    func testSampleBoxPadsByLineThicknessNotByBoundingBoxHeight() {
+    func testHorizontalSliceKeepsLineThicknessAndRotation() {
         let line = TextQuad.upright(x: 0.1, y: 0.6, width: 0.5, height: 0.05)
         let lying = line.rotatedClockwise(quarterTurns: 1)
+        let slice = lying.horizontalSlice(from: 0.2, to: 0.8)
 
-        guard let upright = ImageColorSampler.sampleBox(for: line),
-              let turned = ImageColorSampler.sampleBox(for: lying) else {
-            return XCTFail("采样区算不出来")
-        }
-
-        // 0.05 的行厚 × 0.3，两边各扩一次 = 0.03。
-        XCTAssertEqual(upright.height - line.boundingBox.height, 0.03, accuracy: 1e-9)
-        XCTAssertEqual(turned.width - lying.boundingBox.width, 0.03, accuracy: 1e-9)
-        // 转过之后横竖互换，采样区的两条边也该整体互换，不该凭空胀大。
-        XCTAssertEqual(turned.width, upright.height, accuracy: 1e-9)
-        XCTAssertEqual(turned.height, upright.width, accuracy: 1e-9)
+        XCTAssertEqual(slice.baselineLength, lying.baselineLength * 0.6, accuracy: 1e-9)
+        XCTAssertEqual(slice.uprightHeight, lying.uprightHeight, accuracy: 1e-9)
+        XCTAssertEqual(slice.angle, lying.angle, accuracy: 1e-9)
     }
 
     // MARK: - 夹具

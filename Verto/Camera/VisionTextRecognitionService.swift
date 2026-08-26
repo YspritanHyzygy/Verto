@@ -74,17 +74,46 @@ struct VisionTextRecognitionService: TextRecognitionService {
         }
         let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        let lineQuad = TextQuad(
+            topLeft: observation.topLeft,
+            topRight: observation.topRight,
+            bottomRight: observation.bottomRight,
+            bottomLeft: observation.bottomLeft
+        )
+        let ranges = TextTokenization.ranges(in: candidate.string)
+        let tokens = ranges.compactMap { token -> RecognizedTextToken? in
+            guard let quad = tokenQuad(for: token.stringRange, in: candidate) else { return nil }
+            return RecognizedTextToken(
+                text: token.text,
+                quad: quad,
+                confidence: candidate.confidence
+            )
+        }
         return RecognizedTextBlock(
             text: text,
             // VNRectangleObservation 的四角本就是 Vision 归一化坐标（原点左下），
             // 与 TextQuad 同系，直接抄，不做任何翻转。
-            quad: TextQuad(
-                topLeft: observation.topLeft,
-                topRight: observation.topRight,
-                bottomRight: observation.bottomRight,
-                bottomLeft: observation.bottomLeft
-            ),
-            confidence: candidate.confidence
+            quad: lineQuad,
+            confidence: candidate.confidence,
+            // 任一 range 没有几何时整行降级为一个 token，选择层不会伪造精确框。
+            tokens: tokens.count == ranges.count ? tokens : []
         )
+    }
+
+    private static func tokenQuad(
+        for range: Range<String.Index>,
+        in candidate: VNRecognizedText
+    ) -> TextQuad? {
+        do {
+            guard let box = try candidate.boundingBox(for: range) else { return nil }
+            return TextQuad(
+                topLeft: box.topLeft,
+                topRight: box.topRight,
+                bottomRight: box.bottomRight,
+                bottomLeft: box.bottomLeft
+            )
+        } catch {
+            return nil
+        }
     }
 }

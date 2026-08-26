@@ -28,11 +28,13 @@ struct CameraTranslateView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPhoto: PhotosPickerItem?
-    @State private var selectedBlock: BlockSelection?
     @State private var toastText: String?
     @State private var zoomAtGestureStart: CGFloat?
+    @State private var photoDisplayMode: PhotoDisplayMode = .translation
+    @State private var revealTranslatedWhenReady = true
 
     private var hasResultImage: Bool { controller.image != nil }
+    private var hasTranslatedResult: Bool { controller.finalTranslatedPhoto != nil }
 
     var body: some View {
         ZStack {
@@ -71,10 +73,26 @@ struct CameraTranslateView: View {
         .onChange(of: "\(session.sourceLanguage.code)>\(session.targetLanguage.code)") {
             controller.setLanguages(source: session.sourceLanguage, target: session.targetLanguage)
         }
+        .onChange(of: settings.translationEngine) {
+            controller.translationEngineDidChange()
+        }
         .onChange(of: controller.image == nil) { _, hasNoImage in
             // AppShell 允许再次点击当前相机标签触发重拍；从外部 reset 时也要清掉
             // PhotosPicker 的选择，否则稍后重新选择同一张照片不会产生新事件。
-            if hasNoImage { selectedPhoto = nil }
+            if hasNoImage {
+                selectedPhoto = nil
+                photoDisplayMode = .translation
+                revealTranslatedWhenReady = true
+            }
+        }
+        .onChange(of: controller.generation) {
+            guard controller.image != nil else { return }
+            revealTranslatedWhenReady = photoDisplayMode == .translation
+            photoDisplayMode = .original
+        }
+        .onChange(of: controller.finalTranslatedPhoto?.generation) { _, generation in
+            guard generation != nil, revealTranslatedWhenReady else { return }
+            photoDisplayMode = .translation
         }
         .onChange(of: scenePhase) { _, newPhase in
             // 退后台必须停会话：系统会强制中断，留着只会在回前台时拿到一个死会话。
@@ -86,14 +104,6 @@ struct CameraTranslateView: View {
         }
         .onDisappear { controller.stop() }
         .task(id: selectedPhoto) { await loadSelectedPhoto() }
-        .sheet(item: $selectedBlock) { selection in
-            // sheet 是独立 presentation，不继承根部的 preferredColorScheme。
-            blockDetail(for: selection.id)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(30)
-                .preferredColorScheme(settings.appearanceMode.colorScheme)
-        }
     }
 
     // MARK: - 背景
@@ -101,11 +111,29 @@ struct CameraTranslateView: View {
     @ViewBuilder
     private var backdrop: some View {
         ZStack {
-            if let image = controller.image {
-                TranslationOverlayView(
-                    image: image,
+            if let image = controller.image, let photoID = controller.photoID {
+                TranslatedPhotoCanvas(
+                    photoID: photoID,
+                    generation: controller.generation,
+                    originalImage: image,
+                    translatedImage: controller.finalTranslatedPhoto?.image,
                     blocks: controller.blocks,
-                    onSelect: { selectedBlock = BlockSelection(id: $0.id) }
+                    mode: photoDisplayMode,
+                    actions: TranslatedPhotoCanvas.Actions(
+                        translateSelection: { text in
+                            await controller.translateSelection(text)
+                        },
+                        isSelectionCurrent: { [interaction = controller.interactionGeneration] in
+                            controller.interactionGeneration == interaction
+                        },
+                        speak: { text, translated in
+                            controller.speak(text, translated: translated)
+                        },
+                        save: { source, translation in
+                            saveToHistory(source: source, translation: translation)
+                        },
+                        retryBlock: { controller.retryTranslation(for: $0) }
+                    )
                 )
             } else if let previewLayer = controller.captureSource.previewLayer {
                 CameraPreviewView(previewLayer: previewLayer)
@@ -125,6 +153,10 @@ struct CameraTranslateView: View {
         HStack {
             languageControls
 
+            if hasTranslatedResult {
+                displayModeControl
+            }
+
             Spacer()
 
             if hasResultImage {
@@ -138,6 +170,37 @@ struct CameraTranslateView: View {
             }
         }
         .liquidGlassContainer()
+    }
+
+    private var displayModeControl: some View {
+        HStack(spacing: 2) {
+            modeButton(.original, title: String(localized: "原文"))
+            modeButton(.translation, title: String(localized: "译文"))
+        }
+        .padding(3)
+        .background(.black.opacity(0.28), in: Capsule())
+        .background(.ultraThinMaterial, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("camera.photoDisplayMode")
+    }
+
+    private func modeButton(_ mode: PhotoDisplayMode, title: String) -> some View {
+        Button {
+            photoDisplayMode = mode
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .frame(height: 28)
+                .background(
+                    photoDisplayMode == mode ? .white.opacity(0.22) : .clear,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(photoDisplayMode == mode ? .isSelected : [])
+        .accessibilityIdentifier("camera.photoDisplayMode.\(mode.rawValue)")
     }
 
     /// 左侧始终是源语言、右侧始终是目标语言；菜单和交换按钮共用这一块真实玻璃，
@@ -303,8 +366,24 @@ struct CameraTranslateView: View {
             compactStatus(String(localized: "正在识别文字…"), showsProgress: true)
         case .translating:
             compactStatus(String(localized: "正在翻译…"), showsProgress: true)
+        case .reconstructing:
+            compactStatus(String(localized: "正在生成译图…"), showsProgress: true)
         case .done:
-            compactStatus(String(localized: "翻译完成 · 轻点译文查看原文"), showsProgress: false)
+            let finalPhoto = controller.finalTranslatedPhoto
+            let unresolvedBlockCount = finalPhoto?.unresolvedBlockIDs.count ?? controller.blocks.count
+            if finalPhoto?.inlinedBlockIDs.isEmpty == true, !controller.blocks.isEmpty {
+                compactStatus(
+                    String(localized: "翻译完成 · 图片未重建"),
+                    showsProgress: false
+                )
+            } else if unresolvedBlockCount > 0 {
+                compactStatus(
+                    String(localized: "翻译完成 · \(unresolvedBlockCount) 处可点按查看"),
+                    showsProgress: false
+                )
+            } else {
+                compactStatus(String(localized: "翻译完成"), showsProgress: false)
+            }
         case .idle, .ready, .failed:
             EmptyView()
         }
@@ -333,7 +412,7 @@ struct CameraTranslateView: View {
     @ViewBuilder
     private var viewfinderStatus: some View {
         switch controller.phase {
-        case .capturing, .recognizing, .translating, .done:
+        case .capturing, .recognizing, .translating, .reconstructing, .done:
             EmptyView()
 
         case .idle, .ready:
@@ -495,31 +574,12 @@ struct CameraTranslateView: View {
         .accessibilityIdentifier(identifier)
     }
 
-    // MARK: - 单块详情
-
-    @ViewBuilder
-    private func blockDetail(for id: UUID) -> some View {
-        if let block = controller.blocks.first(where: { $0.id == id }) {
-            PhotoBlockDetailView(
-                block: block,
-                onCopy: {
-                    UIPasteboard.general.string = block.displayText
-                    showToast(String(localized: "译文已复制"))
-                },
-                onSpeak: { controller.speak(block) },
-                onSave: { saveToHistory(block) },
-                onRetry: { controller.retryTranslation(for: block.id) },
-                onClose: { selectedBlock = nil }
-            )
-        }
-    }
-
-    private func saveToHistory(_ block: PhotoTranslationController.TranslatedBlock) {
-        guard !block.translation.isEmpty else { return }
+    private func saveToHistory(source: String, translation: String) {
+        guard !translation.isEmpty else { return }
         let languages = controller.historyLanguages
         session.save(
-            source: block.source,
-            result: block.translation,
+            source: source,
+            result: translation,
             sourceLanguage: languages.source,
             targetLanguage: languages.target
         )
@@ -544,110 +604,6 @@ struct CameraTranslateView: View {
         withAnimation { toastText = text }
     }
 
-    /// sheet 需要 Identifiable，而块本身会随译文到达而变——只带 id 进 sheet，
-    /// 内容每次从 controller 现取，重试后的新译文能原地刷新。
-    private struct BlockSelection: Identifiable {
-        let id: UUID
-    }
-}
-
-private struct PhotoBlockDetailView: View {
-    let block: PhotoTranslationController.TranslatedBlock
-    let onCopy: () -> Void
-    let onSpeak: () -> Void
-    let onSave: () -> Void
-    let onRetry: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                SectionLabel(text: String(localized: "原文"))
-                Spacer()
-                SheetCloseButton(action: onClose)
-                    .accessibilityIdentifier("camera.blockDetail.close")
-            }
-            .padding(.bottom, 8)
-
-            Text(block.source)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(AppTheme.secondaryInk)
-                .textSelection(.enabled)
-                .accessibilityIdentifier("camera.blockDetail.source")
-
-            Divider()
-                .overlay(AppTheme.divider)
-                .padding(.vertical, 16)
-
-            SectionLabel(text: String(localized: "译文"))
-                .padding(.bottom, 8)
-
-            if let failure = block.failure {
-                VStack(alignment: .leading, spacing: 12) {
-                    // 显示真实原因。"令牌不对""配额用完""网络断了""语言包没装"
-                    // 各要用户做不同的事，缩成同一句"翻译失败"等于什么都没说。
-                    Text(failure.errorDescription ?? String(localized: "翻译失败，请重试"))
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(AppTheme.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button(action: onRetry) {
-                        Text("重试")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 8)
-                            .background(AppTheme.terracottaFill, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("camera.blockDetail.retry")
-                }
-            } else if block.isPending {
-                HStack(spacing: 10) {
-                    ProgressView().tint(AppTheme.terracotta)
-                    Text("正在翻译…")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(AppTheme.secondaryInk)
-                }
-                .accessibilityIdentifier("camera.blockDetail.loading")
-            } else {
-                Text(block.translation)
-                    .font(.system(size: 21, weight: .regular, design: .serif))
-                    .foregroundStyle(AppTheme.resultInk)
-                    .textSelection(.enabled)
-                    .accessibilityIdentifier("camera.blockDetail.translation")
-            }
-
-            Spacer(minLength: 20)
-
-            HStack(spacing: 22) {
-                actionButton(systemName: "doc.on.doc", label: String(localized: "复制译文"), identifier: "camera.blockDetail.copy", action: onCopy)
-                actionButton(systemName: "speaker.wave.2", label: String(localized: "朗读译文"), identifier: "camera.blockDetail.speak", action: onSpeak)
-                actionButton(systemName: "clock.arrow.circlepath", label: String(localized: "存入历史记录"), identifier: "camera.blockDetail.save", action: onSave)
-                Spacer()
-            }
-            .disabled(block.isPending || block.failed)
-            .opacity(block.isPending || block.failed ? 0.4 : 1)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 22)
-        .padding(.bottom, 26)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(AppTheme.paper.ignoresSafeArea())
-    }
-
-    private func actionButton(
-        systemName: String,
-        label: String,
-        identifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            TextActionIcon(systemName: systemName)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(identifier)
-    }
 }
 
 #Preview {

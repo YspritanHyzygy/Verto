@@ -17,6 +17,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import NaturalLanguage
 
 /// 一块文字在图上的四角，**Vision 归一化坐标系**：原点左下、y 向上、取值 0...1。
 /// 全程保持这套坐标直到 `OverlayGeometry` 一次性换算到视图空间——中途翻转会
@@ -101,6 +102,25 @@ struct TextQuad: Equatable, Sendable {
             bottomLeft: CGPoint(x: x, y: y)
         )
     }
+
+    /// 沿文字基线切出一段四边形。CTC 时间步只能给近似水平位置，生成的框只服务
+    /// 点击与选择；擦除掩码仍由原图像素决定。
+    func horizontalSlice(from lower: CGFloat, to upper: CGFloat) -> TextQuad {
+        let lower = min(max(lower, 0), 1)
+        let upper = min(max(upper, lower), 1)
+        func point(_ start: CGPoint, _ end: CGPoint, _ amount: CGFloat) -> CGPoint {
+            CGPoint(
+                x: start.x + (end.x - start.x) * amount,
+                y: start.y + (end.y - start.y) * amount
+            )
+        }
+        return TextQuad(
+            topLeft: point(topLeft, topRight, lower),
+            topRight: point(topLeft, topRight, upper),
+            bottomRight: point(bottomLeft, bottomRight, upper),
+            bottomLeft: point(bottomLeft, bottomRight, lower)
+        )
+    }
 }
 
 /// 送去识别之前把画面转正。**只作用于识别用的那份副本**，照片本身一个像素不改
@@ -158,40 +178,164 @@ enum OCRImageStraightening {
     }
 }
 
-/// 识别出的一段文字。一段 = 视觉上归属同一块的若干行（见 `TextBlockGrouping`），
-/// 整段一起送翻译——逐行翻译会把一句话切碎，译文质量掉得很明显。
+struct RecognizedTextToken: Equatable, Sendable {
+    let text: String
+    let quad: TextQuad
+    let confidence: Float
+
+    func rotatedClockwise(quarterTurns: Int) -> RecognizedTextToken {
+        RecognizedTextToken(
+            text: text,
+            quad: quad.rotatedClockwise(quarterTurns: quarterTurns),
+            confidence: confidence
+        )
+    }
+}
+
+struct RecognizedTextLine: Equatable, Sendable {
+    let text: String
+    let quad: TextQuad
+    let metricsQuad: TextQuad
+    let confidence: Float
+    let tokens: [RecognizedTextToken]
+
+    init(
+        text: String,
+        quad: TextQuad,
+        metricsQuad: TextQuad? = nil,
+        confidence: Float = 1,
+        tokens: [RecognizedTextToken] = []
+    ) {
+        self.text = text
+        self.quad = quad
+        self.metricsQuad = metricsQuad ?? quad
+        self.confidence = confidence
+        self.tokens = tokens.isEmpty && !text.isEmpty
+            ? [RecognizedTextToken(text: text, quad: quad, confidence: confidence)]
+            : tokens
+    }
+
+    func rotatedClockwise(quarterTurns: Int) -> RecognizedTextLine {
+        RecognizedTextLine(
+            text: text,
+            quad: quad.rotatedClockwise(quarterTurns: quarterTurns),
+            metricsQuad: metricsQuad.rotatedClockwise(quarterTurns: quarterTurns),
+            confidence: confidence,
+            tokens: tokens.map { $0.rotatedClockwise(quarterTurns: quarterTurns) }
+        )
+    }
+}
+
+/// 识别出的一段文字。一段保留完整逐行和逐词几何，整段文字仍一起送翻译。
 struct RecognizedTextBlock: Identifiable, Equatable, Sendable {
     let id: UUID
-    let text: String
-    /// 显示与取色用的框：要真的**盖得住**原文，所以必须把整个字形圈进去。
-    let quad: TextQuad
-    /// 合并判据用的框，**只在 `TextBlockGrouping` 内部流通**，不出识别器。
-    ///
-    /// 两个框分开是因为它们要的东西相反。PP-OCRv6 的 DB 检测器给出的是文字区域的
-    /// **收缩**多边形，`unclip_ratio` 把它还原回真实字形边界——盖原文得用还原后的，
-    /// 不然贴片只压住字的中间一条，上下都露着。但还原量随长宽比变化（长行约 2.4×、
-    /// 短行约 1.7×），拿它当阈值等于让判据随每行形状漂移，标题/正文那道闸门会被反转。
-    ///
-    /// Vision 路径两者相同：它本来就只给一个框。
-    let metricsQuad: TextQuad
-    /// 合并进来的原始行数。叠加层据此决定译文允许折几行。
-    let lineCount: Int
-    let confidence: Float
+    let lines: [RecognizedTextLine]
+
+    var text: String {
+        lines.map(\.text).reduce(into: "") { joined, line in
+            joined = joined.isEmpty ? line : TextBlockGrouping.join(joined, line)
+        }
+    }
+
+    var quad: TextQuad { Self.union(lines.map(\.quad)) }
+    var metricsQuad: TextQuad { Self.union(lines.map(\.metricsQuad)) }
+    var lineCount: Int { lines.count }
+    var confidence: Float { lines.map(\.confidence).min() ?? 0 }
+
+    init(id: UUID = UUID(), lines: [RecognizedTextLine]) {
+        precondition(!lines.isEmpty)
+        self.id = id
+        self.lines = lines
+    }
 
     init(
         id: UUID = UUID(),
         text: String,
         quad: TextQuad,
         metricsQuad: TextQuad? = nil,
-        lineCount: Int = 1,
-        confidence: Float = 1
+        confidence: Float = 1,
+        tokens: [RecognizedTextToken] = []
     ) {
-        self.id = id
-        self.text = text
-        self.quad = quad
-        self.metricsQuad = metricsQuad ?? quad
-        self.lineCount = lineCount
-        self.confidence = confidence
+        self.init(
+            id: id,
+            lines: [
+                RecognizedTextLine(
+                    text: text,
+                    quad: quad,
+                    metricsQuad: metricsQuad,
+                    confidence: confidence,
+                    tokens: tokens
+                )
+            ]
+        )
+    }
+
+    private static func union(_ quads: [TextQuad]) -> TextQuad {
+        quads.dropFirst().reduce(quads[0]) { $0.union($1) }
+    }
+}
+
+/// 统一 Vision 与 CTC 的分词规则。拉丁文字保留词尾标点，CJK 先用系统词法分段；
+/// 分词器没有结果时退回逐字范围。
+enum TextTokenization {
+    struct TokenRange {
+        let text: String
+        let stringRange: Range<String.Index>
+        let characterRange: Range<Int>
+    }
+
+    static func ranges(in text: String) -> [TokenRange] {
+        guard !text.isEmpty else { return [] }
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = text
+        var wordRanges: [Range<String.Index>] = []
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            wordRanges.append(range)
+            return true
+        }
+
+        let ranges = wordRanges.isEmpty ? characterRanges(in: text) : wordRanges.map { word in
+            var lower = word.lowerBound
+            var upper = word.upperBound
+            while lower > text.startIndex {
+                let previous = text.index(before: lower)
+                guard isJoinablePunctuation(text[previous]) else { break }
+                lower = previous
+            }
+            while upper < text.endIndex, isJoinablePunctuation(text[upper]) {
+                upper = text.index(after: upper)
+            }
+            return lower..<upper
+        }
+
+        var seen: Set<String.Index> = []
+        return ranges.compactMap { range in
+            guard !seen.contains(range.lowerBound) else { return nil }
+            seen.insert(range.lowerBound)
+            let token = String(text[range])
+            guard token.contains(where: { !$0.isWhitespace }) else { return nil }
+            let lower = text.distance(from: text.startIndex, to: range.lowerBound)
+            let upper = text.distance(from: text.startIndex, to: range.upperBound)
+            return TokenRange(text: token, stringRange: range, characterRange: lower..<upper)
+        }
+    }
+
+    private static func characterRanges(in text: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var index = text.startIndex
+        while index < text.endIndex {
+            let next = text.index(after: index)
+            if !text[index].isWhitespace { ranges.append(index..<next) }
+            index = next
+        }
+        return ranges
+    }
+
+    private static func isJoinablePunctuation(_ character: Character) -> Bool {
+        !character.isWhitespace && character.unicodeScalars.allSatisfy {
+            CharacterSet.punctuationCharacters.contains($0)
+                || CharacterSet.symbols.contains($0)
+        }
     }
 }
 
@@ -329,27 +473,10 @@ enum TextBlockGrouping {
         var pendingLines: [RecognizedTextBlock] = []
         // 累积并集随扫描增量维护；每行重算一遍是 O(n²)。
         // 两个框各并各的：显示框并出去给叠加层，判据框并了留给下一轮合并用。
-        var pendingQuad: TextQuad?
-        var pendingMetricsQuad: TextQuad?
-
         func flush() {
-            guard !pendingLines.isEmpty,
-                  let quad = pendingQuad,
-                  let metricsQuad = pendingMetricsQuad else { return }
-            let text = pendingLines.map(\.text).reduce(into: "") { joined, line in
-                joined = joined.isEmpty ? line : join(joined, line)
-            }
-            let confidence = pendingLines.map(\.confidence).min() ?? 0
-            blocks.append(RecognizedTextBlock(
-                text: text,
-                quad: quad,
-                metricsQuad: metricsQuad,
-                lineCount: pendingLines.count,
-                confidence: confidence
-            ))
+            guard !pendingLines.isEmpty else { return }
+            blocks.append(RecognizedTextBlock(lines: pendingLines.flatMap(\.lines)))
             pendingLines = []
-            pendingQuad = nil
-            pendingMetricsQuad = nil
         }
 
         for line in sorted {
@@ -358,8 +485,6 @@ enum TextBlockGrouping {
                 flush()
             }
             pendingLines.append(line)
-            pendingQuad = pendingQuad.map { $0.union(line.quad) } ?? line.quad
-            pendingMetricsQuad = pendingMetricsQuad.map { $0.union(line.metricsQuad) } ?? line.metricsQuad
         }
         flush()
         return blocks
