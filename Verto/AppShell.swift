@@ -183,6 +183,13 @@ struct AppShell: View {
             settings.lastTargetLanguageCode = newValue.code
         }
         .task {
+#if DEBUG
+            // 真机路由探针自己驱动同一个 installer；宿主 App 再自动预装会让两条
+            // 下载/解包任务同时写同一档 staging 目录，测试到的是竞争而非生产顺序。
+            if ProcessInfo.processInfo.environment["VERTO_RUN_PHYSICAL_OCR_ROUTE"] == "1" {
+                return
+            }
+#endif
             // 首次启动就后台顺序准备本机两档；不再等用户先打开相机页。
             modelCatalog?.prepareAutomaticModelsIfNeeded()
         }

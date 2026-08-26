@@ -831,7 +831,7 @@ final class PaddleOCRProbeTests: XCTestCase {
     }
 
     /// 与 `VisionAvailabilityProbeTests` 用同一张告示，方便两个引擎横向对照。
-    private static func renderSign() -> UIImage {
+    static func renderSign() -> UIImage {
         let size = CGSize(width: 900, height: 1200)
         return UIGraphicsImageRenderer(size: size).image { context in
             let colors = [

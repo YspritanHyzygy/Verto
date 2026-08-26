@@ -265,7 +265,13 @@ struct OCRModelPackInstaller: OCRModelPackInstalling {
                 options: [], permissions: FilePermissions(rawValue: 0o644)),
               let decompressed = ArchiveByteStream.decompressionStream(readingFrom: source),
               let decoded = ArchiveStream.decodeStream(readingFrom: decompressed),
-              let extraction = ArchiveStream.extractStream(extractingTo: FilePath(directory.path))
+              // Release 归档带构建机的 uid/gid。App 沙箱能写文件内容和普通权限，
+              // 但不能 fchown；不忽略这个明确的 EPERM，AppleArchive 会把已经写下的
+              // 每个模型文件都计作提取失败，后续 Core ML 只看到残缺目录。
+              let extraction = ArchiveStream.extractStream(
+                extractingTo: FilePath(directory.path),
+                flags: [.ignoreOperationNotPermitted]
+              )
         else {
             throw OCRModelInstallError.extractionFailed
         }

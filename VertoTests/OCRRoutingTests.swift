@@ -237,6 +237,93 @@ final class OCRModelCatalogTests: XCTestCase {
     }
 }
 
+/// 默认跳过的真机闸门。它验证的不是合成 installer，而是生产 URL、SHA、解包、
+/// Core ML 编译/加载、路由清理和真实推理整条链。用环境变量显式开启，避免普通
+/// 单测每次都下载最多 60MB 模型。
+@MainActor
+final class OCRPhysicalRouteTests: XCTestCase {
+    func testProductionRouteDownloadsLoadsAndRuns() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["VERTO_RUN_PHYSICAL_OCR_ROUTE"] == "1" else {
+            throw XCTSkip("未设置 VERTO_RUN_PHYSICAL_OCR_ROUTE，跳过真机模型路由探针")
+        }
+#if targetEnvironment(simulator)
+        throw XCTSkip("真机模型路由探针不接受模拟器结果")
+#else
+        let machine = OCRHardwareIdentifier.current()
+        let policy = OCRRoutingPolicy(machineIdentifier: machine)
+        if let expected = environment["VERTO_EXPECTED_OCR_DEVICE_GROUP"] {
+            XCTAssertEqual(Self.label(for: policy.deviceGroup), expected)
+        }
+        let installer = OCRModelPackInstaller()
+        let catalog = OCRModelCatalog(installer: installer, policy: policy)
+        await catalog.prepareAutomaticModelsIfNeeded()?.value
+
+        let image = try XCTUnwrap(PaddleOCRProbeTests.renderSign().normalizedUp().cgImage)
+        var outputs: [String: [String]] = [:]
+        if policy.automaticModelTiers.isEmpty {
+            XCTAssertTrue(OCRModelTier.allCases.allSatisfy { installer.installed($0) == nil })
+            let recognizer = catalog.makeRecognizer(system: VisionTextRecognitionService())
+            outputs["vision"] = try await recognizer
+                .recognizeText(in: image, languages: [.chinese]).map(\.text)
+        } else {
+            for tier in policy.automaticModelTiers {
+                let model = try XCTUnwrap(installer.installed(tier), "\(tier.rawValue) 未完成安装")
+                let service = try PaddleTextRecognitionService(model: model)
+                outputs[tier.rawValue] = try await service
+                    .recognizeText(in: image, languages: [.chinese]).map(\.text)
+            }
+            let retained = Set(policy.automaticModelTiers)
+            XCTAssertTrue(
+                OCRModelTier.allCases
+                    .filter { !retained.contains($0) }
+                    .allSatisfy { installer.installed($0) == nil }
+            )
+        }
+
+        // OCR Test 可在 Vision-only 设备显式验三档；生产路由仍保持不下载。
+        if environment["VERTO_OCR_TEST_ALL_TIERS"] == "1" {
+            for tier in OCRModelTier.allCases {
+                let model: InstalledOCRModel
+                if let installed = installer.installed(tier) {
+                    model = installed
+                } else {
+                    model = try await installer.install(tier) { _ in }
+                }
+                outputs["manual-\(tier.rawValue)"] = try await PaddleTextRecognitionService(
+                    model: model
+                ).recognizeText(in: image, languages: [.chinese]).map(\.text)
+            }
+        }
+
+        XCTAssertTrue(outputs.values.allSatisfy { !$0.isEmpty })
+        let report: [String: Any] = [
+            "schemaVersion": 1,
+            "machineIdentifier": machine,
+            "deviceGroup": Self.label(for: policy.deviceGroup),
+            "automaticModelTiers": policy.automaticModelTiers.map(\.rawValue),
+            "outputs": outputs,
+        ]
+        let data = try JSONSerialization.data(
+            withJSONObject: report,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "ocr-physical-route-\(machine)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+#endif
+    }
+
+    private static func label(for group: OCRRoutingPolicy.DeviceGroup) -> String {
+        switch group {
+        case .visionOnly: "visionOnly"
+        case .a14ThroughA16: "A14-A16"
+        case .a17OrNewer: "A17+"
+        }
+    }
+}
+
 private struct StubLanguageScout: ImageLanguageScouting {
     let decision: ImageLanguageScoutDecision
     func decideEngine(for image: CGImage) async -> ImageLanguageScoutDecision { decision }
