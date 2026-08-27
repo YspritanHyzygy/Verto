@@ -48,7 +48,7 @@ final class PhotoTranslationController {
 
     /// 一块文字及其译文。译文异步填充：块先带原文上屏，翻译完成再原地替换
     /// ——同语音气泡「识别永不等翻译」的做法。
-    struct TranslatedBlock: Identifiable, Equatable {
+    struct TranslatedBlock: Identifiable, Equatable, @unchecked Sendable {
         let id: UUID
         let source: String
         var translation: String
@@ -56,8 +56,14 @@ final class PhotoTranslationController {
         /// 失败原因。存整个错误而不是一个 Bool——"令牌不对""配额用完""网络断了"
         /// 各要用户做不同的事，都缩成同一个红叹号等于什么都没说。
         var failure: TranslationError?
-        let quad: TextQuad
-        let lineCount: Int
+        let lines: [RecognizedTextLine]
+
+        var quad: TextQuad {
+            lines.dropFirst().reduce(lines[0].quad) { $0.union($1.quad) }
+        }
+
+        var lineCount: Int { lines.count }
+        var tokens: [RecognizedTextToken] { lines.flatMap(\.tokens) }
 
         var failed: Bool { failure != nil }
 
@@ -274,11 +280,35 @@ final class PhotoTranslationController {
     func speak(_ block: TranslatedBlock) {
         let text = block.displayText
         guard !text.isEmpty else { return }
-        let languageCode = block.translation.isEmpty
-            ? sourceLanguage.speechLocaleIdentifier
-            : targetLanguage.speechLocaleIdentifier
+        speak(text, translated: !block.translation.isEmpty)
+    }
+
+    func speak(_ text: String, translated: Bool) {
+        guard !text.isEmpty else { return }
+        let languageCode = translated
+            ? targetLanguage.speechLocaleIdentifier
+            : sourceLanguage.speechLocaleIdentifier
         Task { [synthesizer] in
             await synthesizer.speak(text, languageCode: languageCode)
+        }
+    }
+
+    func translateSelection(_ text: String) async -> Result<String, TranslationError> {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return .success("") }
+        let key = cacheKey(for: normalized)
+        if let cached = cache.result(for: key) { return .success(cached.text) }
+        let request = TranslationRequest(
+            text: normalized,
+            source: sourceLanguage,
+            target: targetLanguage
+        )
+        do {
+            let result = try await activeService.translate(request)
+            cache.store(result, for: key)
+            return .success(result.text)
+        } catch {
+            return .failure(error as? TranslationError ?? .network)
         }
     }
 
@@ -328,8 +358,9 @@ final class PhotoTranslationController {
                     translation: "",
                     isPending: true,
                     failure: nil,
-                    quad: $0.quad.rotatedClockwise(quarterTurns: quarterTurns),
-                    lineCount: $0.lineCount
+                    lines: $0.lines.map {
+                        $0.rotatedClockwise(quarterTurns: quarterTurns)
+                    }
                 )
             }
             phase = .translating

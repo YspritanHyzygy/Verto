@@ -70,9 +70,29 @@ enum OCRCharacterSetError: LocalizedError, Equatable {
 /// 而集束搜索要在 18710 类上维护候选集，端侧划不来。
 enum CTCDecoder {
     struct Result: Equatable {
+        struct CharacterSpan: Equatable {
+            var text: String
+            var characterRange: Range<Int>
+            var timeStepRange: Range<Int>
+        }
+
         var text: String
         /// 被采纳的那些时间步上的概率均值。模型输出已过 softmax，直接取即可。
         var confidence: Float
+        var characterSpans: [CharacterSpan]
+        var timeSteps: Int
+
+        init(
+            text: String,
+            confidence: Float,
+            characterSpans: [CharacterSpan] = [],
+            timeSteps: Int = 0
+        ) {
+            self.text = text
+            self.confidence = confidence
+            self.characterSpans = characterSpans
+            self.timeSteps = timeSteps
+        }
     }
 
     /// - Parameters:
@@ -121,6 +141,7 @@ enum CTCDecoder {
         var total: Float = 0
         var emitted = 0
         var previous = -1
+        var spans: [Result.CharacterSpan] = []
 
         for step in 0..<timeSteps {
             let base = step * stepStride
@@ -132,23 +153,38 @@ enum CTCDecoder {
             }
 
             defer { previous = best }
-            // CTC 折叠：跳过 blank（类 0），以及与上一步相同的类。
-            guard best != 0, best != previous else { continue }
+            // 同一类别连续占用的时间步属于同一个字符；blank 把相同字符的两次
+            // 出现隔开。范围只用于近似点击位置，不参与文本解码或质量判定。
+            if best != 0, best == previous, let last = spans.indices.last {
+                spans[last].timeStepRange = spans[last].timeStepRange.lowerBound..<(step + 1)
+                continue
+            }
+            guard best != 0 else { continue }
 
+            let symbol: String
             if best == characterSet.spaceIndex {
-                text += " "
+                symbol = " "
             } else {
                 let index = best - 1
                 guard index < characterSet.characters.count else { continue }
-                text += characterSet.characters[index]
+                symbol = characterSet.characters[index]
             }
+            let start = text.count
+            text += symbol
+            spans.append(Result.CharacterSpan(
+                text: symbol,
+                characterRange: start..<(start + symbol.count),
+                timeStepRange: step..<(step + 1)
+            ))
             total += bestValue
             emitted += 1
         }
 
         return Result(
             text: text,
-            confidence: emitted == 0 ? 0 : total / Float(emitted)
+            confidence: emitted == 0 ? 0 : total / Float(emitted),
+            characterSpans: spans,
+            timeSteps: timeSteps
         )
     }
 }

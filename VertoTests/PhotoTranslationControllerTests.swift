@@ -256,6 +256,42 @@ final class PhotoTranslationControllerTests: XCTestCase {
         XCTAssertEqual(Set(translation.requests.map(\.text)), ["你好", "再见"])
     }
 
+    func testParagraphTranslationKeepsItsLineAndTokenGeometry() async {
+        let firstQuad = TextQuad.upright(x: 0.1, y: 0.6, width: 0.5, height: 0.05)
+        let secondQuad = TextQuad.upright(x: 0.1, y: 0.53, width: 0.5, height: 0.05)
+        let paragraph = RecognizedTextBlock(lines: [
+            RecognizedTextLine(text: "Hello", quad: firstQuad),
+            RecognizedTextLine(text: "world", quad: secondQuad),
+        ])
+        let translation = RecordingTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [paragraph]),
+            translation: translation
+        )
+
+        controller.use(sample())
+        await waitUntil({ controller.phase == .done }, "段落翻译没有完成")
+
+        XCTAssertEqual(translation.requests.map(\.text), ["Hello world"])
+        XCTAssertEqual(controller.blocks.first?.lines.map(\.quad), [firstQuad, secondQuad])
+        XCTAssertEqual(controller.blocks.first?.tokens.map(\.text), ["Hello", "world"])
+    }
+
+    func testSelectionTranslationUsesTheExistingMemoryCache() async throws {
+        let translation = RecordingTranslationService()
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("牌子")]),
+            translation: translation
+        )
+
+        let first = await controller.translateSelection("selected words")
+        let second = await controller.translateSelection("selected words")
+
+        XCTAssertEqual(try first.get(), "译:selected words")
+        XCTAssertEqual(try second.get(), "译:selected words")
+        XCTAssertEqual(translation.requests.map(\.text), ["selected words"])
+    }
+
     /// 横持拍照：照片保持拍下来的样子，识别框却是在转正后的副本里量的，
     /// 所以框必须转回原图坐标才贴得上。
     ///

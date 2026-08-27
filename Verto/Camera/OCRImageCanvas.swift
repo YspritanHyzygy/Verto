@@ -163,7 +163,6 @@ struct OCRImageCanvas {
 /// 原图上一行文字的包围盒，按原分辨率解出来的 RGBA8。
 ///
 /// 逐行解而不是把整张原图展开：12MP 照片整张 RGBA 是 48MB，一行通常只有几十 KB。
-/// 这与 `ImageColorSampler` 逐块 `cropping` 取色是同一套做法。
 private struct LinePatch {
     let originX: Double
     let originY: Double
