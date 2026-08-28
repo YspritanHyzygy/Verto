@@ -19,7 +19,7 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// 拍照翻译的编排：拍照/选图 → Vision 识别 → 逐块翻译 → 就地叠加。
+/// 拍照翻译的编排：拍照/选图 → 识别 → 逐块翻译 → 一次性生成最终图片。
 ///
 /// 由 AppShell 持有，跨 tab 不销毁——切走再回来，拍过的图和译文都还在。
 @Observable
@@ -36,6 +36,8 @@ final class PhotoTranslationController {
         case recognizing
         /// 已出块，译文陆续填入。
         case translating
+        /// 所有译文已经稳定，正在一次性生成最终图片。
+        case reconstructing
         case done
         case failed(Failure)
     }
@@ -74,6 +76,9 @@ final class PhotoTranslationController {
     }
 
     private(set) var image: UIImage?
+    /// 只在整页翻译全部收尾、同一代重建完成后一次性发布。
+    private(set) var translatedImage: UIImage?
+    private(set) var unresolvedBlockIDs: Set<UUID> = []
     /// 当前这张照片里的世界相对正立顺时针歪了几个 90°（见 `CapturedPhoto`）。
     /// 只有识别那一步用得上；显示与取色永远吃没动过的 `image`。
     private var imageQuarterTurns = 0
@@ -95,6 +100,7 @@ final class PhotoTranslationController {
     private let modelCatalog: OCRModelCatalog?
     private let translationService: (any TranslationService)?
     private let synthesizer: any SpeechSynthesizing
+    private let photoReconstructor: any PhotoReconstructing
     private let cache = TranslationMemoryCache()
 
     private var sourceLanguage: Language = .chinese
@@ -108,6 +114,8 @@ final class PhotoTranslationController {
     private var blockTasks: [String: Task<Void, Never>] = [:]
     /// 整页一次批量提交。分批由 service 按自己的上限决定，这里只管消费流。
     private var batchTask: Task<Void, Never>?
+    private var reconstructionTask: Task<Void, Never>?
+    private var reconstructionWorker: Task<PhotoReconstructionResult?, Never>?
 
     init(
         settings: AppSettings,
@@ -115,7 +123,8 @@ final class PhotoTranslationController {
         recognizer: any TextRecognitionService,
         modelCatalog: OCRModelCatalog? = nil,
         translationService: (any TranslationService)? = nil,
-        synthesizer: (any SpeechSynthesizing)? = nil
+        synthesizer: (any SpeechSynthesizing)? = nil,
+        photoReconstructor: any PhotoReconstructing = AdaptiveBackgroundReconstructor()
     ) {
         self.settings = settings
         self.captureSource = captureSource
@@ -123,6 +132,7 @@ final class PhotoTranslationController {
         self.modelCatalog = modelCatalog
         self.translationService = translationService
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
+        self.photoReconstructor = photoReconstructor
     }
 
     private var activeService: any TranslationService {
@@ -149,7 +159,10 @@ final class PhotoTranslationController {
 
     var isBusy: Bool {
         phase == .capturing || phase == .recognizing || phase == .translating
+            || phase == .reconstructing
     }
+
+    var unresolvedBlockCount: Int { unresolvedBlockIDs.count }
 
     var isPermissionFailure: Bool {
         if case .failed(.permissionDenied) = phase { return true }
@@ -266,7 +279,8 @@ final class PhotoTranslationController {
     }
 
     func retryTranslation(for blockID: UUID) {
-        guard let block = blocks.first(where: { $0.id == blockID }) else { return }
+        guard let block = blocks.first(where: { $0.id == blockID }), block.failed else { return }
+        let generation = advanceGeneration(clearBlocks: false)
         let text = normalizedSource(of: block)
         // 同一原文的块共用一次翻译，重试自然也是一起重试。
         for index in blocks.indices where normalizedSource(of: blocks[index]) == text {
@@ -321,13 +335,24 @@ final class PhotoTranslationController {
 
     /// 作废上一轮并领取新的代号。所有异步收尾都拿它和 `generation` 比对。
     private func beginNewPass() -> Int {
+        advanceGeneration(clearBlocks: true)
+    }
+
+    /// 先推进代次，再取消任务。即使旧任务恰好在取消时返回，也已经失去提交资格。
+    private func advanceGeneration(clearBlocks: Bool) -> Int {
+        generation += 1
         pipelineTask?.cancel()
+        pipelineTask = nil
         batchTask?.cancel()
         batchTask = nil
         blockTasks.values.forEach { $0.cancel() }
         blockTasks = [:]
-        blocks = []
-        generation += 1
+        reconstructionTask?.cancel()
+        reconstructionTask = nil
+        reconstructionWorker?.cancel()
+        translatedImage = nil
+        unresolvedBlockIDs = []
+        if clearBlocks { blocks = [] }
         return generation
     }
 
@@ -373,11 +398,7 @@ final class PhotoTranslationController {
     }
 
     private func retranslateAll() {
-        let generation = self.generation
-        batchTask?.cancel()
-        batchTask = nil
-        blockTasks.values.forEach { $0.cancel() }
-        blockTasks = [:]
+        let generation = advanceGeneration(clearBlocks: false)
         for index in blocks.indices {
             blocks[index].translation = ""
             blocks[index].isPending = true
@@ -402,7 +423,7 @@ final class PhotoTranslationController {
             }
         }
         guard !pending.isEmpty else {
-            settleIfFinished()
+            settleIfFinished(generation: generation)
             return
         }
 
@@ -490,16 +511,63 @@ final class PhotoTranslationController {
             blocks[index].isPending = false
             blocks[index].failure = failure
         }
-        settleIfFinished()
+        settleIfFinished(generation: generation)
     }
 
-    private func settleIfFinished() {
-        guard phase == .translating, !blocks.contains(where: \.isPending) else { return }
-        phase = .done
+    private func settleIfFinished(generation: Int) {
+        guard generation == self.generation,
+              phase == .translating,
+              !blocks.contains(where: \.isPending) else { return }
+        startReconstruction(generation: generation)
+    }
+
+    private func startReconstruction(generation: Int) {
+        guard generation == self.generation, let image else { return }
+        phase = .reconstructing
+        translatedImage = nil
+        unresolvedBlockIDs = []
+
+        let blocks = blocks
+        let reconstructor = photoReconstructor
+        // 一张最终图片只有一个 owner。新一代必须等上一张全分辨率任务真正停下，
+        // 否则换语言或重试时会同时跑两套 Core Image 管线，峰值内存翻倍。
+        let previousWorker = reconstructionWorker
+        previousWorker?.cancel()
+        let worker = Task.detached(priority: .userInitiated) {
+            () -> PhotoReconstructionResult? in
+            if let previousWorker { _ = await previousWorker.value }
+            guard !Task.isCancelled else { return nil }
+            do {
+                return try reconstructor.reconstruct(image: image, blocks: blocks)
+            } catch is CancellationError {
+                return nil
+            } catch {
+                return PhotoReconstructionResult(
+                    image: image,
+                    inlinedBlockIDs: [],
+                    unresolvedBlockIDs: Set(blocks.map(\.id))
+                )
+            }
+        }
+        reconstructionWorker = worker
+        reconstructionTask = Task { [weak self] in
+            guard let result = await worker.value,
+                  let self,
+                  !Task.isCancelled,
+                  generation == self.generation else { return }
+            // 图片与未内联块在同一次主线程提交中发布；界面看不到半张旧图、半张新图。
+            translatedImage = result.image
+            unresolvedBlockIDs = result.unresolvedBlockIDs
+            reconstructionTask = nil
+            reconstructionWorker = nil
+            phase = .done
+        }
     }
 
     private func fail(with error: Error) {
         blocks = []
+        translatedImage = nil
+        unresolvedBlockIDs = []
         // 拍照本身就失败时手里没有图，界面退回取景——那就得是活的取景。
         // 识别失败则相反：照片还在屏幕上，取景层根本没在显示，不必解冻。
         if image == nil { captureSource.setPreviewFrozen(false) }

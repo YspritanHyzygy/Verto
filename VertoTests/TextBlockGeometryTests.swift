@@ -506,6 +506,42 @@ final class TextBlockGeometryTests: XCTestCase {
         XCTAssertEqual(blocks.first?.text, "我想和你一起去海边走走", "中文行尾补空格会在译文里留下多余分词")
     }
 
+    @MainActor
+    func testBackwardSelectionKeepsTheOriginalLongPressAnchor() {
+        XCTAssertEqual(
+            TranslatedPhotoCanvasView.selectionRange(anchor: 4, current: 1),
+            1...4
+        )
+    }
+
+    @MainActor
+    func testSelectedTokenTextUsesTheExistingScriptAwareJoinRule() {
+        XCTAssertEqual(
+            TranslatedPhotoCanvasView.joinSelectedTokenTexts(["欢迎", "光临"]),
+            "欢迎光临"
+        )
+        XCTAssertEqual(
+            TranslatedPhotoCanvasView.joinSelectedTokenTexts(["Open", "daily"]),
+            "Open daily"
+        )
+    }
+
+    @MainActor
+    func testSelectionHandleCommitsTheAdjustedRangeWhenPanEnds() {
+        let handle = SelectionHandleView(label: "End")
+        var movedTo: CGPoint?
+        var endCount = 0
+        handle.onMove = { movedTo = $0 }
+        handle.onEnd = { endCount += 1 }
+
+        handle.processPan(state: .changed, location: CGPoint(x: 12, y: 34))
+        XCTAssertEqual(movedTo, CGPoint(x: 12, y: 34))
+        XCTAssertEqual(endCount, 0)
+
+        handle.processPan(state: .ended, location: .zero)
+        XCTAssertEqual(endCount, 1, "手柄松开后必须提交最终选择范围")
+    }
+
     func testGroupingOrdersLinesTopDownThenLeftToRight() {
         let lines = [
             line(text: "右上", x: 0.55, y: 0.80, width: 0.3, height: 0.04),

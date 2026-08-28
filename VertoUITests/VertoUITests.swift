@@ -937,13 +937,20 @@ final class VertoUITests: XCTestCase {
         let secondToken = element("camera.token.1", in: app)
         XCTAssertTrue(firstToken.waitForExistence(timeout: 3))
         XCTAssertTrue(secondToken.waitForExistence(timeout: 3))
+        let expectedSelectionSource = firstToken.label + secondToken.label
         firstToken.press(forDuration: 0.5, thenDragTo: secondToken)
         let selectionSource = element("camera.selectionCard.source", in: app)
         let selectionTranslation = element("camera.selectionCard.translation", in: app)
         XCTAssertTrue(selectionSource.waitForExistence(timeout: 3))
         XCTAssertTrue(selectionTranslation.waitForExistence(timeout: 4))
+        XCTAssertEqual(
+            selectionSource.label,
+            expectedSelectionSource,
+            "中文相邻词不应被选择器擅自插入空格"
+        )
         XCTAssertTrue(element("camera.selectionHandle.start", in: app).exists)
-        XCTAssertTrue(element("camera.selectionHandle.end", in: app).exists)
+        let endHandle = element("camera.selectionHandle.end", in: app)
+        XCTAssertTrue(endHandle.exists)
         captureScreenshot(named: "camera-word-selection", of: app)
         element("camera.selectionCard.close", in: app).tap()
         XCTAssertTrue(waitUntilAbsent(selectionSource))

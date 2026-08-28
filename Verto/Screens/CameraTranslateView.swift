@@ -28,7 +28,6 @@ struct CameraTranslateView: View {
     @State private var toastText: String?
     @State private var zoomAtGestureStart: CGFloat?
     @State private var photoDisplayMode: PhotoDisplayMode = .translation
-    @State private var unresolvedBlockCount = 0
 
     private var hasResultImage: Bool { controller.image != nil }
 
@@ -72,7 +71,6 @@ struct CameraTranslateView: View {
             if hasNoImage {
                 selectedPhoto = nil
                 photoDisplayMode = .translation
-                unresolvedBlockCount = 0
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -95,6 +93,7 @@ struct CameraTranslateView: View {
             if let image = controller.image {
                 TranslatedPhotoCanvas(
                     image: image,
+                    translatedImage: controller.translatedImage,
                     blocks: controller.blocks,
                     mode: photoDisplayMode,
                     actions: TranslatedPhotoCanvas.Actions(
@@ -108,8 +107,7 @@ struct CameraTranslateView: View {
                             saveToHistory(source: source, translation: translation)
                         },
                         retryBlock: { controller.retryTranslation(for: $0) }
-                    ),
-                    onUnresolvedCountChanged: { unresolvedBlockCount = $0 }
+                    )
                 )
             } else if let previewLayer = controller.captureSource.previewLayer {
                 CameraPreviewView(previewLayer: previewLayer)
@@ -342,10 +340,12 @@ struct CameraTranslateView: View {
             compactStatus(String(localized: "正在识别文字…"), showsProgress: true)
         case .translating:
             compactStatus(String(localized: "正在翻译…"), showsProgress: true)
+        case .reconstructing:
+            compactStatus(String(localized: "正在生成译图…"), showsProgress: true)
         case .done:
-            if unresolvedBlockCount > 0 {
+            if controller.unresolvedBlockCount > 0 {
                 compactStatus(
-                    String(localized: "翻译完成 · \(unresolvedBlockCount) 处可点按查看"),
+                    String(localized: "翻译完成 · \(controller.unresolvedBlockCount) 处可点按查看"),
                     showsProgress: false
                 )
             } else {
@@ -379,7 +379,7 @@ struct CameraTranslateView: View {
     @ViewBuilder
     private var viewfinderStatus: some View {
         switch controller.phase {
-        case .capturing, .recognizing, .translating, .done:
+        case .capturing, .recognizing, .translating, .reconstructing, .done:
             EmptyView()
 
         case .idle, .ready:

@@ -126,6 +126,33 @@ private final class RecordingTranslationService: TranslationService, @unchecked 
     }
 }
 
+private final class StubPhotoReconstructor: PhotoReconstructing, @unchecked Sendable {
+    private let lock = NSLock()
+    private let gate: DispatchSemaphore?
+    private(set) var callCount = 0
+
+    init(holdsResult: Bool = false) {
+        gate = holdsResult ? DispatchSemaphore(value: 0) : nil
+    }
+
+    func release() { gate?.signal() }
+
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult {
+        lock.withLock { callCount += 1 }
+        gate?.wait()
+        try Task.checkCancellation()
+        let unresolved = Set(blocks.filter { $0.isPending || $0.failed || $0.translation.isEmpty }.map(\.id))
+        return PhotoReconstructionResult(
+            image: image,
+            inlinedBlockIDs: Set(blocks.map(\.id)).subtracting(unresolved),
+            unresolvedBlockIDs: unresolved
+        )
+    }
+}
+
 @MainActor
 private final class SilentSynthesizer: SpeechSynthesizing {
     private(set) var spoken: [(text: String, languageCode: String)] = []
@@ -150,14 +177,16 @@ final class PhotoTranslationControllerTests: XCTestCase {
         recognizer: any TextRecognitionService,
         capture: StubCaptureSource? = nil,
         translation: RecordingTranslationService = RecordingTranslationService(),
-        synthesizer: SilentSynthesizer? = nil
+        synthesizer: SilentSynthesizer? = nil,
+        reconstructor: StubPhotoReconstructor = StubPhotoReconstructor()
     ) -> PhotoTranslationController {
         PhotoTranslationController(
             settings: AppSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!),
             captureSource: capture ?? StubCaptureSource(),
             recognizer: recognizer,
             translationService: translation,
-            synthesizer: synthesizer ?? SilentSynthesizer()
+            synthesizer: synthesizer ?? SilentSynthesizer(),
+            photoReconstructor: reconstructor
         )
     }
 
@@ -254,6 +283,26 @@ final class PhotoTranslationControllerTests: XCTestCase {
         XCTAssertEqual(controller.blocks.map(\.translation), ["译:你好", "译:再见"])
         XCTAssertFalse(controller.blocks.contains { $0.isPending || $0.failed })
         XCTAssertEqual(Set(translation.requests.map(\.text)), ["你好", "再见"])
+    }
+
+    func testFinalImagePublishesOnlyAfterAtomicReconstructionCompletes() async {
+        let reconstructor = StubPhotoReconstructor(holdsResult: true)
+        let controller = makeController(
+            recognizer: StubRecognizer(blocks: [block("你好")]),
+            reconstructor: reconstructor
+        )
+
+        controller.use(sample())
+        await waitUntil({ controller.phase == .reconstructing }, "没有进入最终图片生成阶段")
+
+        XCTAssertNil(controller.translatedImage, "重建还没结束就发布了半成品图片")
+        XCTAssertEqual(reconstructor.callCount, 1, "整页翻译只应启动一次最终图片生成")
+
+        reconstructor.release()
+        await waitUntil({ controller.phase == .done }, "最终图片没有完成原子提交")
+
+        XCTAssertNotNil(controller.translatedImage)
+        XCTAssertEqual(controller.unresolvedBlockCount, 0)
     }
 
     func testParagraphTranslationKeepsItsLineAndTokenGeometry() async {
@@ -405,6 +454,7 @@ final class PhotoTranslationControllerTests: XCTestCase {
         controller.reset()
 
         XCTAssertNil(controller.image)
+        XCTAssertNil(controller.translatedImage)
         XCTAssertTrue(controller.blocks.isEmpty)
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertEqual(synthesizer.stopCount, 1, "回到取景要掐掉正在播的朗读")

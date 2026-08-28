@@ -105,8 +105,15 @@ struct PhotoReconstructionResult: @unchecked Sendable {
     let unresolvedBlockIDs: Set<UUID>
 }
 
+protocol PhotoReconstructing: Sendable {
+    func reconstruct(
+        image: UIImage,
+        blocks: [PhotoTranslationController.TranslatedBlock]
+    ) throws -> PhotoReconstructionResult
+}
+
 /// 在低纹理区域按原图像素生成保守字形掩码，填回局部背景，再绘制译文。
-struct AdaptiveBackgroundReconstructor: @unchecked Sendable {
+struct AdaptiveBackgroundReconstructor: PhotoReconstructing, @unchecked Sendable {
     private let context = CIContext(options: [.cacheIntermediates: false])
 
     func reconstruct(
@@ -561,12 +568,10 @@ struct TranslatedPhotoCanvas: UIViewRepresentable {
     }
 
     let image: UIImage
+    let translatedImage: UIImage?
     let blocks: [PhotoTranslationController.TranslatedBlock]
     let mode: PhotoDisplayMode
     let actions: Actions
-    let onUnresolvedCountChanged: (Int) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> TranslatedPhotoCanvasView {
         let view = TranslatedPhotoCanvasView()
@@ -575,84 +580,13 @@ struct TranslatedPhotoCanvas: UIViewRepresentable {
     }
 
     func updateUIView(_ view: TranslatedPhotoCanvasView, context: Context) {
-        context.coordinator.update(
-            view: view,
-            image: image,
+        view.configure(
+            originalImage: image,
+            translatedImage: translatedImage,
             blocks: blocks,
             mode: mode,
-            actions: actions,
-            onUnresolvedCountChanged: onUnresolvedCountChanged
+            actions: actions
         )
-    }
-
-    static func dismantleUIView(
-        _ uiView: TranslatedPhotoCanvasView,
-        coordinator: Coordinator
-    ) {
-        coordinator.renderTask?.cancel()
-        coordinator.renderWorker?.cancel()
-    }
-
-    @MainActor
-    final class Coordinator {
-        var renderTask: Task<Void, Never>?
-        var renderWorker: Task<PhotoReconstructionResult?, Never>?
-        private var renderKey = ""
-        private var renderedImage: UIImage?
-        private var renderedImageSource: ObjectIdentifier?
-
-        func update(
-            view: TranslatedPhotoCanvasView,
-            image: UIImage,
-            blocks: [PhotoTranslationController.TranslatedBlock],
-            mode: PhotoDisplayMode,
-            actions: Actions,
-            onUnresolvedCountChanged: @escaping (Int) -> Void
-        ) {
-            let imageSource = ObjectIdentifier(image)
-            if renderedImageSource != imageSource {
-                renderedImage = nil
-                renderedImageSource = nil
-            }
-            view.configure(
-                originalImage: image,
-                translatedImage: renderedImage,
-                blocks: blocks,
-                mode: mode,
-                actions: actions
-            )
-            let key = blocks.map {
-                "\($0.id.uuidString)|\($0.translation)|\($0.isPending)|\($0.failed)"
-            }.joined(separator: "\n") + "|\(imageSource)"
-            guard key != renderKey else { return }
-            renderKey = key
-            renderTask?.cancel()
-            // 先取消并等上一张整图真正停下，再启动下一张，避免连续译文回包时
-            // 多个全分辨率 Core Image 管线同时占内存。
-            let previousWorker = renderWorker
-            previousWorker?.cancel()
-            let worker = Task.detached(priority: .userInitiated) {
-                () -> PhotoReconstructionResult? in
-                if let previousWorker { _ = await previousWorker.value }
-                guard !Task.isCancelled else { return nil }
-                return try? AdaptiveBackgroundReconstructor().reconstruct(
-                    image: image,
-                    blocks: blocks
-                )
-            }
-            renderWorker = worker
-            renderTask = Task { [weak self, weak view] in
-                guard let result = await worker.value,
-                      !Task.isCancelled,
-                      let self,
-                      let view,
-                      self.renderKey == key else { return }
-                renderedImage = result.image
-                renderedImageSource = imageSource
-                view.setTranslatedImage(result.image, animated: true)
-                onUnresolvedCountChanged(result.unresolvedBlockIDs.count)
-            }
-        }
     }
 }
 
@@ -671,6 +605,9 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
     private var mode: PhotoDisplayMode = .translation
     private var actions: TranslatedPhotoCanvas.Actions?
     private var selection: ClosedRange<Int>?
+    /// 长按拖选的起点必须跨整个手势保持不变；不能从每次更新后的 range 反推，
+    /// 否则向左跨过多个词时会逐步丢掉最初按住的那个词。
+    private var longPressAnchorIndex: Int?
     private var selectionRevision = 0
     private var canvasSize = CGSize.zero
     private var didSetInitialGeometry = false
@@ -705,6 +642,8 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
         contentView.addSubview(endHandle)
         startHandle.onMove = { [weak self] point in self?.moveHandle(start: true, to: point) }
         endHandle.onMove = { [weak self] point in self?.moveHandle(start: false, to: point) }
+        startHandle.onEnd = { [weak self] in self?.translateCurrentSelection() }
+        endHandle.onEnd = { [weak self] in self?.translateCurrentSelection() }
         startHandle.accessibilityIdentifier = "camera.selectionHandle.start"
         endHandle.accessibilityIdentifier = "camera.selectionHandle.end"
         startHandle.onAdjust = { [weak self] direction in self?.adjustHandle(start: true, direction: direction) }
@@ -738,6 +677,10 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
         actions: TranslatedPhotoCanvas.Actions
     ) {
         let imageChanged = self.originalImage !== originalImage
+        let finalImageArrived = !imageChanged
+            && self.translatedImage == nil
+            && translatedImage != nil
+            && mode == .translation
         self.originalImage = originalImage
         self.translatedImage = translatedImage
         self.blocks = blocks
@@ -747,28 +690,23 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
             self.mode = mode
             clearSelection()
         }
-        imageView.image = mode == .original ? originalImage : (translatedImage ?? originalImage)
+        let displayedImage = mode == .original ? originalImage : (translatedImage ?? originalImage)
+        if finalImageArrived {
+            UIView.transition(
+                with: imageView,
+                duration: 0.18,
+                options: [.transitionCrossDissolve, .allowAnimatedContent]
+            ) {
+                self.imageView.image = displayedImage
+            }
+        } else {
+            imageView.image = displayedImage
+        }
         if imageChanged {
             didSetInitialGeometry = false
             setNeedsLayout()
         }
         rebuildAccessibilityElements()
-    }
-
-    func setTranslatedImage(_ image: UIImage, animated: Bool) {
-        translatedImage = image
-        guard mode == .translation else { return }
-        let changes = { self.imageView.image = image }
-        if animated {
-            UIView.transition(
-                with: imageView,
-                duration: 0.18,
-                options: [.transitionCrossDissolve, .allowAnimatedContent],
-                animations: changes
-            )
-        } else {
-            changes()
-        }
     }
 
     override func layoutSubviews() {
@@ -870,13 +808,16 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
         guard let index = tokenIndex(at: point) ?? nearestTokenIndex(to: point) else { return }
         switch gesture.state {
         case .began:
+            longPressAnchorIndex = index
             select(index...index, translate: false)
         case .changed:
-            guard let current = selection else { return }
-            select(min(current.lowerBound, index)...max(current.lowerBound, index), translate: false)
-        case .ended:
+            guard let anchor = longPressAnchorIndex else { return }
+            select(Self.selectionRange(anchor: anchor, current: index), translate: false)
+        case .ended, .cancelled:
+            longPressAnchorIndex = nil
             translateCurrentSelection()
         default:
+            longPressAnchorIndex = nil
             break
         }
     }
@@ -909,8 +850,19 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
 
     private func selectedText(in range: ClosedRange<Int>) -> String {
         let tokens = orderedTokens
-        return range.compactMap { tokens.indices.contains($0) ? tokens[$0].token.text : nil }
-            .joined(separator: " ")
+        return Self.joinSelectedTokenTexts(
+            range.compactMap { tokens.indices.contains($0) ? tokens[$0].token.text : nil }
+        )
+    }
+
+    static func selectionRange(anchor: Int, current: Int) -> ClosedRange<Int> {
+        min(anchor, current)...max(anchor, current)
+    }
+
+    static func joinSelectedTokenTexts(_ texts: [String]) -> String {
+        texts.reduce(into: "") { joined, text in
+            joined = joined.isEmpty ? text : TextBlockGrouping.join(joined, text)
+        }
     }
 
     private func block(at point: CGPoint) -> PhotoTranslationController.TranslatedBlock? {
@@ -976,6 +928,7 @@ final class TranslatedPhotoCanvasView: UIView, UIScrollViewDelegate, UIGestureRe
     private func clearSelection() {
         selectionRevision += 1
         selection = nil
+        longPressAnchorIndex = nil
         card.dismiss()
         updateSelectionAppearance()
         rebuildAccessibilityElements()
@@ -1077,8 +1030,9 @@ private final class CanvasAccessibilityElement: UIAccessibilityElement {
 }
 
 @MainActor
-private final class SelectionHandleView: UIView {
+final class SelectionHandleView: UIView {
     var onMove: ((CGPoint) -> Void)?
+    var onEnd: (() -> Void)?
     var onAdjust: ((UIAccessibilityScrollDirection) -> Void)?
 
     init(label: String) {
@@ -1097,8 +1051,18 @@ private final class SelectionHandleView: UIView {
     required init?(coder: NSCoder) { nil }
 
     @objc private func didPan(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .began || gesture.state == .changed else { return }
-        onMove?(gesture.location(in: superview))
+        processPan(state: gesture.state, location: gesture.location(in: superview))
+    }
+
+    func processPan(state: UIGestureRecognizer.State, location: CGPoint) {
+        switch state {
+        case .began, .changed:
+            onMove?(location)
+        case .ended, .cancelled:
+            onEnd?()
+        default:
+            break
+        }
     }
 
     override func accessibilityIncrement() { onAdjust?(.right) }
