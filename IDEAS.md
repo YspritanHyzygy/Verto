@@ -43,6 +43,7 @@
 | TRY-005 | 2026-08-27 | 用户提出 | 低 | 删除设置中的 `自研模型` 选项。 | 移除现有设置入口及相关不可选状态展示，检查设置页面、本地化资源和代码引用中的遗留内容。 | 待验证 | - | 当前 `TranslationEngine.custom` 与对应设置行仍存在，设置项处于不可选状态。 |
 | TRY-006 | 2026-08-27 | 用户提出 | 中 | 新增历史记录删除功能，允许用户移除不再需要的翻译记录。 | 待制定。后续明确单条删除、批量删除、全部清空及确认或恢复行为的产品范围。 | 待细化 | - | 当前 `HistoryView` 提供载入与收藏操作，`TranslationSession` 没有删除历史记录的方法。该项目与 `BUG-004` 修改同一功能区域，应按顺序执行。 |
 | TRY-007 | 2026-08-28 | 用户提出 | 中 | 重新确定文字翻译页的语音听写方案，后续候选范围排除 Whisper。 | 待制定。先核对当前 Apple `SpeechAnalyzer` 与 `SFSpeechRecognizer` 路径的覆盖范围和实际问题，再比较不依赖 Whisper 的候选方案。验收需要覆盖准确率、首字与收尾延迟、资源占用、温度、隐私、系统兼容性和目标语言。 | 待细化 | - | 当前 `main` 未包含 Whisper。生产路径由 `SpeechEngineFactory` 在 iOS 26 以上优先使用 `SpeechAnalyzer`，其他环境使用 `SFSpeechRecognizer`。此前 Whisper 仅作为未合入的实验候选，已有 iPhone 12 冒烟数据未达到产品默认门槛。 |
+| TRY-008 | 2026-08-28 | 用户提出 | 中 | 将当前语言选项中的 `中文` 明确为 `简体中文`，新增 `繁體中文`，并支持简体中文与繁体中文双向转换。 | 待制定。后续核对 `zh-Hans` 与 `zh-Hant` 在语言选择、翻译服务、自动检测、OCR、语音、历史记录和设置恢复中的映射，再制定简繁双向转换与其他语言互译的验收样本。 | 待细化 | - | 当前语言模型只定义 `zh-Hans`，界面自称显示为 `中文`。中转只把 `zh-Hans` 映射为 Google 语言码 `zh-CN`，尚无独立的繁体中文语言项。 |
 
 ## 问题
 
@@ -54,3 +55,4 @@
 | BUG-002 | 2026-08-27 | 点击主页语音识别话筒后，界面没有动画反馈，交互状态缺少可见变化。 | 主页语音识别入口，点击话筒后。 | 用户报告 | 中 | 待复现 | - | 当前源码已包含真实输入电平驱动的 `WaveBars`。尚未用当前构建和真实麦克风确认报告是否仍可复现。 |
 | BUG-003 | 2026-08-27 | 拍照翻译显示翻译完成，文字块也可以点击查看翻译详情，但结果画布没有显示翻译后的画面。 | 完成一次拍照翻译并进入结果态后。 | 用户报告 | 高 | 待复现 | - | 当前源码已通过 `PhotoTranslationController.translatedImage` 原子发布最终图片，并有 `testFinalImagePublishesOnlyAfterAtomicReconstructionCompletes` 单元测试。视觉重建允许文字块进入 `unresolvedBlockIDs` 并保留原图，这条路径与用户报告吻合。真实照片仍待定向复现。当前结构见 [`docs/photo-translation-architecture.md`](docs/photo-translation-architecture.md)。 |
 | BUG-004 | 2026-08-27 | 历史记录中始终存在三条 Demo 时期的演示翻译。 | 打开历史记录页面。 | 代码确认 | 中 | 已复现 | [BUG-004](docs/work-items/BUG-004.md) | `TranslationSession.historyItems` 当前直接使用 `HistoryItem.today + HistoryItem.yesterday` 初始化，共三条静态演示记录。原因已确认。 |
+| BUG-005 | 2026-08-28 | 提交文字翻译后，用户体感返回速度慢于 Google Translate。 | 使用当前包含 Verto 翻译中转配置的构建。具体文本、网络条件、中转冷启动状态与耗时待记录。 | 用户报告 | 中 | 待复现 | - | 当前构建的实际路线为 App、Cloudflare Worker 中转、Google Cloud Translation v3。`LLM 翻译` 处于不可用状态，服务端当前调用 Cloud Translation v3。尚未采集端到端耗时，原因未确认。 |
