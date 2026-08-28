@@ -129,7 +129,9 @@ private final class RecordingTranslationService: TranslationService, @unchecked 
 private final class StubPhotoReconstructor: PhotoReconstructing, @unchecked Sendable {
     private let lock = NSLock()
     private let gate: DispatchSemaphore?
-    private(set) var callCount = 0
+    private var storedCallCount = 0
+
+    var callCount: Int { lock.withLock { storedCallCount } }
 
     init(holdsResult: Bool = false) {
         gate = holdsResult ? DispatchSemaphore(value: 0) : nil
@@ -141,7 +143,7 @@ private final class StubPhotoReconstructor: PhotoReconstructing, @unchecked Send
         image: UIImage,
         blocks: [PhotoTranslationController.TranslatedBlock]
     ) throws -> PhotoReconstructionResult {
-        lock.withLock { callCount += 1 }
+        lock.withLock { storedCallCount += 1 }
         gate?.wait()
         try Task.checkCancellation()
         let unresolved = Set(blocks.filter { $0.isPending || $0.failed || $0.translation.isEmpty }.map(\.id))
@@ -294,6 +296,7 @@ final class PhotoTranslationControllerTests: XCTestCase {
 
         controller.use(sample())
         await waitUntil({ controller.phase == .reconstructing }, "没有进入最终图片生成阶段")
+        await waitUntil({ reconstructor.callCount == 1 }, "最终图片生成器没有启动")
 
         XCTAssertNil(controller.translatedImage, "重建还没结束就发布了半成品图片")
         XCTAssertEqual(reconstructor.callCount, 1, "整页翻译只应启动一次最终图片生成")
