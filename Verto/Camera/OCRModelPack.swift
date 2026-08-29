@@ -20,7 +20,7 @@ import Foundation
 ///
 /// 三档都是 PP-OCRv6（转成 Core ML fp16）。识别覆盖和 detector 的框分数阈值
 /// 属于具体档位，不能拿一档的配置套给另外两档。构建源见
-/// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/scripts/build_models.py`。
+/// `https://github.com/YspritanHyzygy/Verto-Model-Packs/blob/main/scripts/build_models.py`。
 /// 模型不进 app bundle；生产版按设备自动下载并路由，OCR Test 构建才允许人工覆盖。
 enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
     case tiny
@@ -51,7 +51,7 @@ enum OCRModelTier: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// 压缩包字节数，与 `sha256` 一样由
-    /// `https://github.com/YspritanHyzygy/PP-OCR-for-Apple/blob/main/manifests/v1.json`
+    /// `https://github.com/YspritanHyzygy/Verto-Model-Packs/blob/main/manifests/v1.json`
     /// 锁定；换模型必须把两者一起同步过来。
     var downloadBytes: Int64 {
         switch self {
@@ -118,7 +118,7 @@ enum OCRModelPack {
     /// 模型工程与产物统一托管在专用仓库；Verto 的 Release 只留给 app 本身。
     /// 仍使用 GitHub Release 资产，是因为它走 CDN、URL 稳定且不撑大 git 仓库。
     static let releaseBaseURL = URL(
-        string: "https://github.com/YspritanHyzygy/PP-OCR-for-Apple/releases/download/v\(version)/"
+        string: "https://github.com/YspritanHyzygy/Verto-Model-Packs/releases/download/v\(version)/"
     )!
 
     static let detectorFileName = "VertoTextDetector.mlpackage"

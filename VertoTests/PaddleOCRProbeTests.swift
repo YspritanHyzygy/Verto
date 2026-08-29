@@ -47,7 +47,7 @@ final class OCRModelPackMetadataTests: XCTestCase {
             XCTAssertEqual(tier.sha256, contract.sha256)
             XCTAssertEqual(
                 tier.archiveURL.absoluteString,
-                "https://github.com/YspritanHyzygy/PP-OCR-for-Apple/releases/download/v1/\(contract.name)"
+                "https://github.com/YspritanHyzygy/Verto-Model-Packs/releases/download/v1/\(contract.name)"
             )
         }
     }
@@ -106,7 +106,7 @@ final class OCRModelPackMetadataTests: XCTestCase {
 /// 加起来约 600 行是重写的，几何写错不会崩、只会安静地给出错结果。
 /// 单测能覆盖纯函数，但"这一整条链路接起来还是同一个 OCR"只有真模型能回答。
 ///
-/// 模型不在仓库里（14MB~47MB，由 PP-OCR-for-Apple Release 分发），所以用环境变量指路：
+/// 模型不在仓库里（14MB~47MB，由 Verto-Model-Packs Release 分发），所以用环境变量指路：
 ///     VERTO_OCR_MODEL_DIR=/private/tmp/pp-ocr-for-apple/out/small
 ///     VERTO_OCR_MODEL_TIER=small
 /// 没设就跳过并说明原因，不伪装成通过。
@@ -236,7 +236,7 @@ final class PaddleOCRProbeTests: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["VERTO_OCR_MODEL_DIR"] else {
             throw XCTSkip("""
                 未设置 VERTO_OCR_MODEL_DIR，跳过真实模型探针。
-                先在 PP-OCR-for-Apple 仓库运行 scripts/build_models.py，再把某一档目录指过来。
+                先在 Verto-Model-Packs 仓库运行 scripts/build_models.py，再把某一档目录指过来。
                 """)
         }
         let root = URL(fileURLWithPath: directory)
@@ -316,7 +316,7 @@ final class PaddleOCRProbeTests: XCTestCase {
     }
 
     /// 用真实生产链路输出公开评测器需要的原始行、框和耗时。这里不做匹配、CER、
-    /// bootstrap 或 pass/fail 判定；分数统一由 PP-OCR-for-Apple 的评测脚本计算。
+    /// bootstrap 或 pass/fail 判定；分数统一由 Verto-Model-Packs 的评测脚本计算。
     func testBenchmarkExternalCorpus() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let modelDirectory = Self.benchmarkURL(

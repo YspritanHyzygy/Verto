@@ -18,7 +18,7 @@ governed by their own terms and are not covered by this project's license:
   Translation, NaturalLanguage, Observation), used under Apple's SDK and
   platform terms.
 - PP-OCRv6 Core ML model packages, downloaded on demand from
-  https://github.com/YspritanHyzygy/PP-OCR-for-Apple and derived from
+  https://github.com/YspritanHyzygy/Verto-Model-Packs and derived from
   PaddlePaddle's Apache-2.0 PP-OCRv6 models.
 - Google Translate's public web endpoint (translate.googleapis.com), used
   without an API key and subject to Google's terms of service.
